@@ -1478,7 +1478,7 @@ std::error_code resolveOwnPqRegistration(CryptoNote::INode& node, CryptoNote::Wa
 
 }  // namespace
 
-std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t& depositCount) {
+std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t& depositCount, bool& tracking) {
   try {
     System::EventLock lk(readyEvent);
     auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
@@ -1487,6 +1487,7 @@ std::error_code WalletService::getPqDepositScheme(std::string& scheme, uint32_t&
     }
     scheme = depositSchemeName(gw->getPqDepositScheme());
     depositCount = gw->getPqDepositCount();
+    tracking = gw->isTracking();
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while getting deposit scheme: " << x.what();
     return x.code();

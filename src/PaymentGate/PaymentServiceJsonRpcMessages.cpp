@@ -220,6 +220,7 @@ void GetPqDepositScheme::Request::serialize(CryptoNote::ISerializer& serializer)
 void GetPqDepositScheme::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(scheme, "scheme");
   serializer(depositCount, "depositCount");
+  serializer(tracking, "tracking");
 }
 
 void CreatePqDepositAddress::Request::serialize(CryptoNote::ISerializer& serializer) {

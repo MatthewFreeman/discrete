@@ -447,6 +447,12 @@ TEST_F(PaymentGateTest, TrackingKeyExportIsAuditOnly) {
     std::string spendPub;
     ASSERT_FALSE(service->getSpendkeys(primary, spendPub, spendSec));
     ASSERT_FALSE(service->getMnemonicSeed("", mnemonic));
+
+    std::string scheme;
+    uint32_t depositCount = 0;
+    bool tracking = true;
+    ASSERT_FALSE(service->getPqDepositScheme(scheme, depositCount, tracking));
+    EXPECT_FALSE(tracking);
   }
   ASSERT_FALSE(trackingKey.empty());
   ASSERT_FALSE(spendSec.empty());
@@ -479,6 +485,13 @@ TEST_F(PaymentGateTest, TrackingKeyExportIsAuditOnly) {
   std::string viewSpendPub, viewSpendSec;
   ASSERT_FALSE(viewService->getSpendkeys(primary, viewSpendPub, viewSpendSec));
   EXPECT_EQ(viewSpendSec, std::string(64, '0'));
+
+  std::string scheme;
+  uint32_t depositCount = 0;
+  bool tracking = false;
+  ASSERT_FALSE(viewService->getPqDepositScheme(scheme, depositCount, tracking));
+  EXPECT_EQ(scheme, "single-key-index");
+  EXPECT_TRUE(tracking);
 }
 
 /*

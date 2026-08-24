@@ -57,6 +57,10 @@ public:
   // state from the primary spend secret; tracking wallets hold a view-only audit
   // key that can scan balance/history but cannot spend or register account numbers.
   bool pqEnabled() const { return static_cast<bool>(m_pqConsumer); }
+  // True only when the loaded container was created from tracking credentials and
+  // therefore has no spend authority. This reports container state without
+  // exporting or probing any secret material.
+  bool isTracking() const;
   uint64_t pqActualBalance() const;
   // What can actually be spent right now: confirmed (out of the mempool) AND past
   // its per-output unlock height. pqActualBalance() minus this is the locked/pending
