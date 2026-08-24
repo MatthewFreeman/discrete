@@ -107,7 +107,7 @@ public:
   std::error_code registerPqAccount(std::string& transactionHash);
   std::error_code registerPqAccountPaid(std::string& transactionHash);
   std::error_code getPqAccountStatus(bool& registered, std::string& accountNumber, uint32_t& blockHeight, uint32_t& txIndex);
-  std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount);
+  std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount, bool& tracking);
   std::error_code createPqDepositAddress(std::string& address, uint32_t& index);
   std::error_code listPqDepositAddresses(std::vector<std::string>& addresses, std::vector<uint32_t>& indices);
   // MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default (maxT=0), not

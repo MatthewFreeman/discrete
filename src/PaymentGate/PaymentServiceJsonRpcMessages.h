@@ -338,6 +338,7 @@ struct GetPqDepositScheme {
   struct Response {
     std::string scheme;
     uint32_t depositCount;  // how many deposit addresses have been issued
+    bool tracking;          // true only for a container without spend authority
 
     void serialize(CryptoNote::ISerializer& serializer);
   };
