@@ -82,7 +82,15 @@ class WalletLegacy :
   ITransfersObserver {
 
 public:
-  WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log);
+  // WalletLegacy historically scanned released pre-outContext-v2 payments only
+  // for routing indices T in [0, 64). Keep that safe runtime default, but let an
+  // operator temporarily widen the legacy-only recovery window before a rescan.
+  // Current outContext-v2 outputs still use the O(1) path regardless of T.
+  static constexpr uint32_t DEFAULT_PQ_LEGACY_SCAN_WINDOW = 64;
+  static constexpr uint32_t MAX_PQ_LEGACY_SCAN_WINDOW = 4096;
+
+  WalletLegacy(const CryptoNote::Currency& currency, INode& node,
+               Logging::ILogger& log);
   virtual ~WalletLegacy();
 
   virtual void addObserver(IWalletLegacyObserver* observer) override;
@@ -98,6 +106,8 @@ public:
   void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password, const uint32_t scanHeight);
   virtual void shutdown() override;
   virtual void rescan() override;
+  void setPqLegacyScanWindow(uint32_t pqLegacyScanWindow);
+  void rescanWithPqLegacyScanWindow(uint32_t pqLegacyScanWindow);
   virtual void reset() override;
   virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
 
@@ -314,6 +324,7 @@ private:
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
   std::string m_pqProtectedSpendMetadata;
+  uint32_t m_pqLegacyScanWindow = DEFAULT_PQ_LEGACY_SCAN_WINDOW;
 
   // Payer-side recipient labels captured at send time (the counterparty address is
   // not recoverable from PQ output scanning). Keyed by txid, surfaced through the

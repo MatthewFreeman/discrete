@@ -2141,6 +2141,173 @@ TEST(WalletLegacySmoke, FailedProtectedMigrationCanRestoreDetachedSeed) {
   wallet.shutdown();
 }
 
+// Released pre-outContext-v2 senders encrypted SingleKeyIndex routing index T
+// into the legacy AEAD context. The GUI backend used a fixed [0, 64) recovery
+// window, so a wallet that had already synchronized past an out-of-range receipt could
+// never discover it: its ordinary rescan recreated the same fixed scanner.
+// Prove the bounded recovery override survives the exact cache-backed
+// load/rescan cycle, that retrying remains idempotent, and that a later legacy
+// receipt in the saved runtime range is detected by normal synchronization.
+TEST(WalletLegacySmoke, ExtendedLegacyWindowRecoversAndStaysActive) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  std::stringstream serialized;
+  CryptoNote::AccountKeys accountKeys;
+  const uint64_t amount = 123400;
+  uint32_t tipHeight = 0;
+  {
+    CryptoNote::WalletLegacy wallet(currency, node, logger);
+    wallet.initAndGenerate("pass");
+    wallet.getAccountKeys(accountKeys);
+    CryptoNote::PqWalletKeys mine =
+        CryptoNote::derivePqWalletKeys(accountKeys.spendSecretKey);
+
+    Crypto::SecretKey otherSecret;
+    for (std::size_t i = 0; i < sizeof(otherSecret.data); ++i) {
+      otherSecret.data[i] = static_cast<uint8_t>(i * 17 + 9);
+    }
+    CryptoNote::PqWalletKeys them =
+        CryptoNote::derivePqWalletKeys(otherSecret);
+    CryptoNote::Transaction legacy = makePqPayToLegacyV1(
+        them, mine, 1000000, amount, 0x76, /*T=*/255);
+    generator.setTxFee(CryptoNote::getObjectHash(legacy), 1000000 - amount);
+    generator.addTxToBlockchain(legacy);
+    tipHeight = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+    node.updateObservers();
+
+    const auto initialDeadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (wallet.pqSyncedHeight() < tipHeight &&
+           std::chrono::steady_clock::now() < initialDeadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(wallet.pqSyncedHeight(), tipHeight);
+    EXPECT_EQ(wallet.actualBalance(), 0u);  // safe default still excludes T=255
+    EXPECT_EQ(wallet.getTransactionCount(), 0u);
+
+    CryptoNote::WalletHelper::SaveWalletResultObserver saveObserver;
+    {
+      CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saveObserver);
+      std::future<std::error_code> saved = saveObserver.saveResult.get_future();
+      wallet.save(serialized, true, true);
+      ASSERT_FALSE(saved.get());
+    }
+    wallet.shutdown();
+  }
+
+  serialized.seekg(0);
+  CryptoNote::WalletLegacy recovery(currency, node, logger);
+  CryptoNote::WalletHelper::InitWalletResultObserver initObserver;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(recovery, initObserver);
+    std::future<std::error_code> loaded = initObserver.initResult.get_future();
+    recovery.initAndLoad(serialized, "pass");
+    ASSERT_FALSE(loaded.get());
+  }
+  EXPECT_EQ(recovery.actualBalance(), 0u);  // cached miss is unchanged until rescan
+
+  recovery.rescanWithPqLegacyScanWindow(
+      /*exclusive maxT=*/256);
+  const auto firstRecoveryDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while ((recovery.pqSyncedHeight() < tipHeight ||
+          recovery.actualBalance() != amount) &&
+         std::chrono::steady_clock::now() < firstRecoveryDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GE(recovery.pqSyncedHeight(), tipHeight);
+  EXPECT_EQ(recovery.actualBalance(), amount);
+  ASSERT_EQ(recovery.getTransactionCount(), 1u);
+  const auto firstByT = recovery.getTransactionSubaddressAmounts(0);
+  ASSERT_EQ(firstByT.size(), 1u);
+  ASSERT_EQ(firstByT.count(255), 1u);
+  EXPECT_EQ(firstByT.at(255), static_cast<int64_t>(amount));
+
+  // The configured range remains active in this wallet instance after its
+  // internal shutdown/load cycle. An ordinary retry must neither lose the
+  // receipt nor duplicate it.
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    recovery.rescan();
+    const auto recoveryDeadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while ((recovery.pqSyncedHeight() < tipHeight ||
+            recovery.actualBalance() != amount) &&
+           std::chrono::steady_clock::now() < recoveryDeadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(recovery.pqSyncedHeight(), tipHeight);
+    EXPECT_EQ(recovery.actualBalance(), amount);
+    ASSERT_EQ(recovery.getTransactionCount(), 1u);
+    const auto byT = recovery.getTransactionSubaddressAmounts(0);
+    ASSERT_EQ(byT.size(), 1u);
+    ASSERT_EQ(byT.count(255), 1u);
+    EXPECT_EQ(byT.at(255), static_cast<int64_t>(amount));
+  }
+
+  const uint64_t laterAmount = 13000;
+  CryptoNote::PqWalletKeys mine =
+      CryptoNote::derivePqWalletKeys(accountKeys.spendSecretKey);
+  Crypto::SecretKey laterSenderSecret;
+  for (std::size_t i = 0; i < sizeof(laterSenderSecret.data); ++i) {
+    laterSenderSecret.data[i] = static_cast<uint8_t>(i * 19 + 11);
+  }
+  CryptoNote::PqWalletKeys laterSender =
+      CryptoNote::derivePqWalletKeys(laterSenderSecret);
+  CryptoNote::Transaction laterLegacy = makePqPayToLegacyV1(
+      laterSender, mine, 1000000, laterAmount, 0x77, /*T=*/255);
+  generator.setTxFee(CryptoNote::getObjectHash(laterLegacy),
+                     1000000 - laterAmount);
+  generator.addTxToBlockchain(laterLegacy);
+  tipHeight = static_cast<uint32_t>(generator.getBlockchain().size() - 1);
+  node.updateObservers();
+
+  const auto laterDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while ((recovery.pqSyncedHeight() < tipHeight ||
+          recovery.actualBalance() != amount + laterAmount) &&
+         std::chrono::steady_clock::now() < laterDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_GE(recovery.pqSyncedHeight(), tipHeight);
+  EXPECT_EQ(recovery.actualBalance(), amount + laterAmount);
+  EXPECT_EQ(recovery.getTransactionCount(), 2u);
+  recovery.shutdown();
+}
+
+TEST(WalletLegacySmoke, RejectsUnboundedLegacyRecoveryWindow) {
+  System::Dispatcher dispatcher;
+  (void)dispatcher;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
+      .testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
+      .currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+
+  CryptoNote::WalletLegacy wallet(currency, node, logger);
+  wallet.initAndGenerate("pass");
+  EXPECT_THROW(
+      wallet.rescanWithPqLegacyScanWindow(
+          CryptoNote::WalletLegacy::DEFAULT_PQ_LEGACY_SCAN_WINDOW - 1),
+      std::invalid_argument);
+  EXPECT_THROW(
+      wallet.rescanWithPqLegacyScanWindow(
+          CryptoNote::WalletLegacy::MAX_PQ_LEGACY_SCAN_WINDOW + 1),
+      std::invalid_argument);
+  wallet.shutdown();
+}
+
 // DiscreteWallet uses WalletLegacy rather than WalletGreen. Exercise the exact
 // GUI send/history backend and prove that its original recipient label and
 // payment proof survive a full cache-backed wallet save, reload, and safe rescan,

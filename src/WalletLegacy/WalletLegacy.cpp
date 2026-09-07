@@ -37,6 +37,7 @@
 #include <numeric>
 #include <crypto/random.h>
 #include <set>
+#include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <string.h>
@@ -76,11 +77,6 @@ using namespace Crypto;
 namespace {
 
 const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 24 * 60 * 60;
-
-// How many subaddress indices T this single-identity wallet tries when scanning
-// (see initSync). Payments to H-I-A-T-C addresses with T >= this window are not
-// recognized; raising it costs one SHA3 + AEAD per extra T per foreign output.
-const uint32_t SUBADDRESS_SCAN_WINDOW = 64;
 
 // Header on the wallet cache blob once it carries PQ sections. Absent on legacy
 // (pre-PQ) caches, which were a bare transfers-sync blob.
@@ -264,7 +260,8 @@ public:
   BlockchainSynchronizer& m_sync;
 };
 
-WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log) :
+WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node,
+                           Logging::ILogger& log) :
   m_state(NOT_INITIALIZED),
   m_currency(currency),
   m_node(node),
@@ -540,13 +537,14 @@ void WalletLegacy::initSync() {
   // per T per foreign output).
   if (m_pqConsumer) {
     m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex,
-                                           SUBADDRESS_SCAN_WINDOW);
+                                           DEFAULT_PQ_LEGACY_SCAN_WINDOW);
+    m_pqConsumer->state().setLegacyTWindowRescan(m_pqLegacyScanWindow);
   }
 
   m_logger(INFO) << "PQ ledger initialized: mode "
                  << (keys.spendSecretKey != NULL_SECRET_KEY ? "full" : "tracking")
                  << ", sync timestamp " << syncStart.timestamp
-                 << ", subaddress scan window " << SUBADDRESS_SCAN_WINDOW;
+                 << ", legacy subaddress scan window " << m_pqLegacyScanWindow;
 
   m_state = INITIALIZED;
 
@@ -691,6 +689,30 @@ void WalletLegacy::shutdown() {
 }
 
 void WalletLegacy::rescan() {
+  rebuild(true);
+}
+
+void WalletLegacy::setPqLegacyScanWindow(uint32_t pqLegacyScanWindow) {
+  if (pqLegacyScanWindow < DEFAULT_PQ_LEGACY_SCAN_WINDOW ||
+      pqLegacyScanWindow > MAX_PQ_LEGACY_SCAN_WINDOW) {
+    throw std::invalid_argument("PQ legacy scan window must be between " +
+                                std::to_string(DEFAULT_PQ_LEGACY_SCAN_WINDOW) +
+                                " and " +
+                                std::to_string(MAX_PQ_LEGACY_SCAN_WINDOW));
+  }
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  throwIf(m_state == LOADING || m_state == SAVING,
+          CryptoNote::error::WRONG_STATE);
+  m_pqLegacyScanWindow = pqLegacyScanWindow;
+}
+
+void WalletLegacy::rescanWithPqLegacyScanWindow(
+    uint32_t pqLegacyScanWindow) {
+  setPqLegacyScanWindow(pqLegacyScanWindow);
+  {
+    std::unique_lock<std::mutex> lock(m_cacheMutex);
+    throwIf(m_state != INITIALIZED, CryptoNote::error::WRONG_STATE);
+  }
   rebuild(true);
 }
 
