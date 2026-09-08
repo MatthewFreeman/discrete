@@ -1,0 +1,59 @@
+Note: Google Test filter = WalletLegacyBenchmark.DISABLED_GenesisSyncLegacyWindow64Vs1
+[==========] Running 1 test from 1 test case.
+[----------] Global test environment set-up.
+[----------] 1 test from WalletLegacyBenchmark
+[ RUN      ] WalletLegacyBenchmark.DISABLED_GenesisSyncLegacyWindow64Vs1
+BENCH_CONFIG,foreign_outputs=4096,owned_v2_outputs=1,blocks=67,tip_height=66,tip_hash=84824832721686628b7f615f2857405f1c3a03666664f8db85a9c78923a4c6f4,warmups_per_mode=2,samples_per_mode=21,candidate_semantics=v2_plus_legacy_T0
+BENCH_RESULT,phase=warmup,sequence=0,pair=0,position=0,maxT=64,wall_ms=1934.665,cpu_ms=1921.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=warmup,sequence=1,pair=0,position=1,maxT=1,wall_ms=293.125,cpu_ms=281.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=warmup,sequence=2,pair=1,position=0,maxT=1,wall_ms=300.630,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=warmup,sequence=3,pair=1,position=1,maxT=64,wall_ms=1991.903,cpu_ms=1968.750,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=4,pair=0,position=0,maxT=64,wall_ms=1985.827,cpu_ms=1984.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=5,pair=0,position=1,maxT=1,wall_ms=312.341,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=6,pair=1,position=0,maxT=1,wall_ms=299.377,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=7,pair=1,position=1,maxT=64,wall_ms=1994.838,cpu_ms=1984.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=8,pair=2,position=0,maxT=64,wall_ms=2162.436,cpu_ms=2156.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=9,pair=2,position=1,maxT=1,wall_ms=324.908,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=10,pair=3,position=0,maxT=1,wall_ms=306.846,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=11,pair=3,position=1,maxT=64,wall_ms=1975.337,cpu_ms=1968.750,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=12,pair=4,position=0,maxT=64,wall_ms=2061.805,cpu_ms=2031.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=13,pair=4,position=1,maxT=1,wall_ms=307.566,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=14,pair=5,position=0,maxT=1,wall_ms=306.049,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=15,pair=5,position=1,maxT=64,wall_ms=1969.977,cpu_ms=1953.125,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=16,pair=6,position=0,maxT=64,wall_ms=2089.282,cpu_ms=2078.125,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=17,pair=6,position=1,maxT=1,wall_ms=326.630,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=18,pair=7,position=0,maxT=1,wall_ms=296.836,cpu_ms=281.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=19,pair=7,position=1,maxT=64,wall_ms=2040.906,cpu_ms=2031.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=20,pair=8,position=0,maxT=64,wall_ms=2050.555,cpu_ms=2031.250,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=21,pair=8,position=1,maxT=1,wall_ms=315.368,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=22,pair=9,position=0,maxT=1,wall_ms=341.238,cpu_ms=343.750,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=23,pair=9,position=1,maxT=64,wall_ms=2072.837,cpu_ms=2062.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=24,pair=10,position=0,maxT=64,wall_ms=2150.242,cpu_ms=2140.625,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=25,pair=10,position=1,maxT=1,wall_ms=327.184,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=26,pair=11,position=0,maxT=1,wall_ms=307.382,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=27,pair=11,position=1,maxT=64,wall_ms=2128.257,cpu_ms=2109.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=28,pair=12,position=0,maxT=64,wall_ms=2156.786,cpu_ms=2140.625,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=29,pair=12,position=1,maxT=1,wall_ms=328.331,cpu_ms=312.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=30,pair=13,position=0,maxT=1,wall_ms=298.003,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=31,pair=13,position=1,maxT=64,wall_ms=1964.716,cpu_ms=1968.750,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=32,pair=14,position=0,maxT=64,wall_ms=1993.655,cpu_ms=1984.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=33,pair=14,position=1,maxT=1,wall_ms=296.003,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=34,pair=15,position=0,maxT=1,wall_ms=296.239,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=35,pair=15,position=1,maxT=64,wall_ms=1943.200,cpu_ms=1937.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=36,pair=16,position=0,maxT=64,wall_ms=2145.244,cpu_ms=2140.625,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=37,pair=16,position=1,maxT=1,wall_ms=300.808,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=38,pair=17,position=0,maxT=1,wall_ms=310.164,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=39,pair=17,position=1,maxT=64,wall_ms=1985.673,cpu_ms=1984.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=40,pair=18,position=0,maxT=64,wall_ms=1968.790,cpu_ms=1984.375,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=41,pair=18,position=1,maxT=1,wall_ms=298.268,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=42,pair=19,position=0,maxT=1,wall_ms=296.044,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=43,pair=19,position=1,maxT=64,wall_ms=2014.852,cpu_ms=1937.500,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=44,pair=20,position=0,maxT=64,wall_ms=2057.620,cpu_ms=2046.875,balance=800000,transactions=1,synced_height=66
+BENCH_RESULT,phase=recorded,sequence=45,pair=20,position=1,maxT=1,wall_ms=310.201,cpu_ms=296.875,balance=800000,transactions=1,synced_height=66
+BENCH_SUMMARY,baseline_maxT=64,candidate_maxT=1,baseline_wall_median_ms=2040.906,baseline_wall_p95_ms=2156.786,candidate_wall_median_ms=307.382,candidate_wall_p95_ms=328.331,wall_speedup=6.640,baseline_cpu_median_ms=2031.250,baseline_cpu_p95_ms=2140.625,candidate_cpu_median_ms=296.875,candidate_cpu_p95_ms=312.500,derived_baseline_aead_attempts_per_foreign=65,derived_candidate_aead_attempts_per_foreign=2
+[       OK ] WalletLegacyBenchmark.DISABLED_GenesisSyncLegacyWindow64Vs1 (54891 ms)
+[----------] 1 test from WalletLegacyBenchmark (54891 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test case ran. (54891 ms total)
+[  PASSED  ] 1 test.

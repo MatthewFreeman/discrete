@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="10" failures="0" disabled="0" errors="0" timestamp="2026-09-07T19:49:21" time="0.007" name="AllTests">
+  <testsuite name="ReviewV2Only" tests="10" failures="0" disabled="0" errors="0" time="0.007">
+    <testcase name="CurrentRoutingIndicesPreserveExactRecords" status="run" time="0.003" classname="ReviewV2Only" />
+    <testcase name="HistoricalZeroDistinguishesOneFromV2Only" status="run" time="0.001" classname="ReviewV2Only" />
+    <testcase name="ForeignOutputDoesNotCredit" status="run" time="0" classname="ReviewV2Only" />
+    <testcase name="WrongSpendAuthorityDoesNotCredit" status="run" time="0.001" classname="ReviewV2Only" />
+    <testcase name="PayloadIntegrityFailureDoesNotCredit" status="run" time="0" classname="ReviewV2Only" />
+    <testcase name="AmountBindingFailureDoesNotCredit" status="run" time="0.001" classname="ReviewV2Only" />
+    <testcase name="SpendCommitBindingFailureDoesNotCredit" status="run" time="0" classname="ReviewV2Only" />
+    <testcase name="OutputIndexAndInputsHashAreBound" status="run" time="0.001" classname="ReviewV2Only" />
+    <testcase name="RepeatedScansPreserveRecord" status="run" time="0" classname="ReviewV2Only" />
+    <testcase name="ExistingSigningDigestBindsTransactionVersion" status="run" time="0" classname="ReviewV2Only" />
+  </testsuite>
+</testsuites>

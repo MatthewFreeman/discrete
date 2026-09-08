@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="13" failures="0" disabled="0" errors="0" timestamp="2026-09-07T19:49:21" time="0.012" name="AllTests">
+  <testsuite name="PqScan" tests="13" failures="0" disabled="0" errors="0" time="0.012">
+    <testcase name="RecognizesOwnOutput" status="run" time="0.003" classname="PqScan" />
+    <testcase name="RecognizesAnyTInOneShotNoEnumeration" status="run" time="0.001" classname="PqScan" />
+    <testcase name="LegacyTZeroOutputStillRecognized" status="run" time="0" classname="PqScan" />
+    <testcase name="LegacyTWindowPathsRespectExclusiveBound" status="run" time="0.002" classname="PqScan" />
+    <testcase name="IgnoresOthersOutput" status="run" time="0" classname="PqScan" />
+    <testcase name="AmountTamperNotRecognized" status="run" time="0.001" classname="PqScan" />
+    <testcase name="SpendCommitTamperDiscarded" status="run" time="0.001" classname="PqScan" />
+    <testcase name="WrongInputsHashNotRecognized" status="run" time="0" classname="PqScan" />
+    <testcase name="MultiOutputSelectsOwned" status="run" time="0.002" classname="PqScan" />
+    <testcase name="AggregateRecognizesCorrectDeposit" status="run" time="0" classname="PqScan" />
+    <testcase name="AggregateRoutesEachDepositToItsOwnKey" status="run" time="0.001" classname="PqScan" />
+    <testcase name="AggregateIgnoresOtherService" status="run" time="0.001" classname="PqScan" />
+    <testcase name="AggregateAmountTamperNotRecognized" status="run" time="0" classname="PqScan" />
+  </testsuite>
+</testsuites>

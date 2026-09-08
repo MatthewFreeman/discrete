@@ -1,0 +1,407 @@
+diff --git a/src/WalletLegacy/WalletLegacy.cpp b/src/WalletLegacy/WalletLegacy.cpp
+index 70125bcf..8f13db11 100755
+--- a/src/WalletLegacy/WalletLegacy.cpp
++++ b/src/WalletLegacy/WalletLegacy.cpp
+@@ -537,7 +537,7 @@ void WalletLegacy::initSync() {
+   // per T per foreign output).
+   if (m_pqConsumer) {
+     m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex,
+-                                           DEFAULT_PQ_LEGACY_SCAN_WINDOW);
++                                           m_pqLegacyScanWindow);
+     m_pqConsumer->state().setLegacyTWindowRescan(m_pqLegacyScanWindow);
+   }
+ 
+@@ -693,10 +693,10 @@ void WalletLegacy::rescan() {
+ }
+ 
+ void WalletLegacy::setPqLegacyScanWindow(uint32_t pqLegacyScanWindow) {
+-  if (pqLegacyScanWindow < DEFAULT_PQ_LEGACY_SCAN_WINDOW ||
++  if (pqLegacyScanWindow < 1 ||
+       pqLegacyScanWindow > MAX_PQ_LEGACY_SCAN_WINDOW) {
+     throw std::invalid_argument("PQ legacy scan window must be between " +
+-                                std::to_string(DEFAULT_PQ_LEGACY_SCAN_WINDOW) +
++                                std::to_string(1) +
+                                 " and " +
+                                 std::to_string(MAX_PQ_LEGACY_SCAN_WINDOW));
+   }
+@@ -708,6 +708,10 @@ void WalletLegacy::setPqLegacyScanWindow(uint32_t pqLegacyScanWindow) {
+ 
+ void WalletLegacy::rescanWithPqLegacyScanWindow(
+     uint32_t pqLegacyScanWindow) {
++  if (pqLegacyScanWindow < DEFAULT_PQ_LEGACY_SCAN_WINDOW) {
++    throw std::invalid_argument("PQ legacy recovery window must be at least " +
++                                std::to_string(DEFAULT_PQ_LEGACY_SCAN_WINDOW));
++  }
+   setPqLegacyScanWindow(pqLegacyScanWindow);
+   {
+     std::unique_lock<std::mutex> lock(m_cacheMutex);
+diff --git a/tests/UnitTests/TestWallet.cpp b/tests/UnitTests/TestWallet.cpp
+index e8d85d0b..e4e1be6d 100755
+--- a/tests/UnitTests/TestWallet.cpp
++++ b/tests/UnitTests/TestWallet.cpp
+@@ -20,16 +20,29 @@
+ #include <algorithm>
+ #include <array>
+ #include <chrono>
++#include <cmath>
+ #include <condition_variable>
++#include <cstdlib>
++#include <ctime>
+ #include <fstream>
++#include <iomanip>
++#include <iostream>
+ #include <mutex>
+ #include <numeric>
+ #include <set>
+ #include <sstream>
++#include <stdexcept>
+ #include <system_error>
+ #include <thread>
+ #include <tuple>
+ 
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#endif
++
+ #include "Common/StringTools.h"
+ #include "CryptoNoteCore/Currency.h"
+ #include "CryptoNoteCore/TransactionApi.h"
+@@ -179,6 +192,35 @@ CryptoNote::Transaction makePqPayTo(const CryptoNote::PqWalletKeys& from,
+                                         /*unlockHeight=*/0, extra);
+ }
+ 
++CryptoNote::Transaction makePqPayMany(
++    const CryptoNote::PqWalletKeys& from,
++    const CryptoNote::PqWalletKeys& to,
++    uint64_t inAmount, uint64_t amountPerOutput, uint8_t seed,
++    std::size_t outputCount) {
++  std::vector<CryptoPQ::InputRef> refs(1);
++  for (auto& b : refs[0].prevTxid) b = seed;
++  refs[0].prevOutIndex = 1;
++  CryptoPQ::Hash256 fih = CryptoPQ::inputsHash(refs);
++  CryptoPQ::PqBuiltOutput src =
++      CryptoPQ::buildPqOutput(from.viewPub, from.spendPub, fih, 0, inAmount);
++  CryptoNote::PqSpendInput in;
++  for (std::size_t i = 0; i < 32; ++i) {
++    in.prevTxid.data[i] = static_cast<uint8_t>(seed + i);
++  }
++  in.prevOutIndex = 0;
++  in.amount = inAmount;
++  in.rho = src.rho;
++
++  std::vector<CryptoNote::PqSendOutput> outputs;
++  outputs.reserve(outputCount);
++  for (std::size_t i = 0; i < outputCount; ++i) {
++    outputs.push_back(CryptoNote::PqSendOutput{
++        to.viewPub, to.spendPub, amountPerOutput});
++  }
++  return CryptoNote::buildPqTransaction(
++      {in}, outputs, from.spendPub, from.spendSk);
++}
++
+ // Recreate the released pre-outContext-v2 SingleKeyIndex output format. The
+ // legacy AEAD key derivation includes the destination's actual T, so current
+ // receivers must try the issued T range to recover the payload.
+@@ -2283,6 +2325,299 @@ TEST(WalletLegacySmoke, ExtendedLegacyWindowRecoversT259AndStaysActive) {
+   recovery.shutdown();
+ }
+ 
++// End-to-end synchronization benchmark for the GUI/simplewallet backend. The
++// synthetic chain is constructed once and remains immutable while fresh
++// WalletLegacy instances scan it from height zero. The candidate maxT=1 keeps
++// the current v2 attempt plus legacy T=0 compatibility, but removes T=1..63.
++TEST(WalletLegacyBenchmark, DISABLED_GenesisSyncLegacyWindow64Vs1) {
++  auto envUnsigned = [](const char* name, unsigned fallback) {
++    const char* raw = std::getenv(name);
++    if (raw == nullptr || *raw == '\0') return fallback;
++    char* end = nullptr;
++    const unsigned long parsed = std::strtoul(raw, &end, 10);
++    if (end == raw || *end != '\0') return fallback;
++    return static_cast<unsigned>(parsed);
++  };
++
++  const unsigned txCount = envUnsigned("PQ_SYNC_BENCH_TXS", 64);
++  const unsigned outputsPerTx = envUnsigned("PQ_SYNC_BENCH_OUTPUTS_PER_TX", 64);
++  const unsigned warmups = envUnsigned("PQ_SYNC_BENCH_WARMUPS", 2);
++  const unsigned samples = envUnsigned("PQ_SYNC_BENCH_SAMPLES", 21);
++  ASSERT_GE(txCount, 1u);
++  ASSERT_LE(txCount, 200u);
++  ASSERT_GE(outputsPerTx, 1u);
++  ASSERT_LE(outputsPerTx,
++            static_cast<unsigned>(CryptoNote::parameters::MAX_PQ_OUTPUTS_PER_TX));
++  ASSERT_GE(samples, 3u);
++
++  System::Dispatcher dispatcher;
++  (void)dispatcher;
++  Logging::ConsoleLogger logger(Logging::ERROR);
++  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
++      .testnet(true)
++      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
++      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
++      .currency();
++  TestBlockchainGenerator generator(currency);
++
++  auto fixedSecret = [](uint8_t multiplier, uint8_t addend) {
++    Crypto::SecretKey secret{};
++    for (std::size_t i = 0; i < sizeof(secret.data); ++i) {
++      secret.data[i] = static_cast<uint8_t>(i * multiplier + addend);
++    }
++    return secret;
++  };
++
++  CryptoNote::AccountKeys targetAccount{};
++  targetAccount.spendSecretKey = fixedSecret(29, 7);
++  const CryptoNote::PqWalletKeys target =
++      CryptoNote::derivePqWalletKeys(targetAccount.spendSecretKey);
++  const CryptoNote::PqWalletKeys sender =
++      CryptoNote::derivePqWalletKeys(fixedSecret(17, 9));
++  const CryptoNote::PqWalletKeys foreign =
++      CryptoNote::derivePqWalletKeys(fixedSecret(31, 13));
++
++  const uint64_t amountPerOutput = 1000;
++  const uint64_t fee = 200000;
++  for (unsigned i = 0; i < txCount; ++i) {
++    const uint64_t outputTotal = amountPerOutput * outputsPerTx;
++    CryptoNote::Transaction tx = makePqPayMany(
++        sender, foreign, outputTotal + fee, amountPerOutput,
++        static_cast<uint8_t>(i + 1), outputsPerTx);
++    generator.setTxFee(CryptoNote::getObjectHash(tx), fee);
++    generator.addTxToBlockchain(tx);
++  }
++
++  const uint64_t ownedAmount = 800000;
++  CryptoNote::Transaction owned =
++      makePqPayTo(sender, target, 1000000, ownedAmount, 0xe1);
++  generator.setTxFee(CryptoNote::getObjectHash(owned), 200000);
++  generator.addTxToBlockchain(owned);
++
++  const uint32_t tipHeight =
++      static_cast<uint32_t>(generator.getBlockchain().size() - 1);
++  const std::string tipHash = Common::podToHex(
++      CryptoNote::getObjectHash(generator.getBlockchain().back()));
++  INodeTrivialRefreshStub node(generator);
++
++  struct Result {
++    double wallMs;
++    double cpuMs;
++    uint64_t balance;
++    std::size_t transactionCount;
++    uint32_t syncedHeight;
++  };
++
++  auto processCpuMilliseconds = []() {
++#ifdef _WIN32
++    FILETIME creationTime{};
++    FILETIME exitTime{};
++    FILETIME kernelTime{};
++    FILETIME userTime{};
++    if (!GetProcessTimes(GetCurrentProcess(), &creationTime, &exitTime,
++                         &kernelTime, &userTime)) {
++      throw std::runtime_error("GetProcessTimes failed: " +
++                               std::to_string(GetLastError()));
++    }
++    ULARGE_INTEGER kernel{};
++    kernel.LowPart = kernelTime.dwLowDateTime;
++    kernel.HighPart = kernelTime.dwHighDateTime;
++    ULARGE_INTEGER user{};
++    user.LowPart = userTime.dwLowDateTime;
++    user.HighPart = userTime.dwHighDateTime;
++    return static_cast<double>(kernel.QuadPart + user.QuadPart) / 10000.0;
++#else
++    return 1000.0 * static_cast<double>(std::clock()) / CLOCKS_PER_SEC;
++#endif
++  };
++
++  unsigned runSequence = 0;
++  auto runOnce = [&](uint32_t maxT, const char* phase,
++                     unsigned pairIndex, unsigned position) {
++    CryptoNote::WalletLegacy wallet(currency, node, logger);
++    wallet.setPqLegacyScanWindow(maxT);
++    const double cpuStart = processCpuMilliseconds();
++    const auto wallStart = std::chrono::steady_clock::now();
++    wallet.initWithKeys(targetAccount, "benchmark-only", 0);
++
++    const auto deadline = wallStart + std::chrono::minutes(5);
++    while (wallet.pqSyncedHeight() < tipHeight &&
++           std::chrono::steady_clock::now() < deadline) {
++      std::this_thread::sleep_for(std::chrono::milliseconds(1));
++    }
++    const auto wallEnd = std::chrono::steady_clock::now();
++    const double cpuEnd = processCpuMilliseconds();
++    Result result{
++        std::chrono::duration<double, std::milli>(wallEnd - wallStart).count(),
++        cpuEnd - cpuStart,
++        wallet.actualBalance(), wallet.getTransactionCount(),
++        wallet.pqSyncedHeight()};
++    wallet.shutdown();
++    node.waitForAsyncContexts();
++
++    EXPECT_GE(result.syncedHeight, tipHeight);
++    EXPECT_EQ(result.balance, ownedAmount);
++    EXPECT_EQ(result.transactionCount, 1u);
++    std::cout << std::fixed << std::setprecision(3)
++              << "BENCH_RESULT,phase=" << phase
++              << ",sequence=" << runSequence++
++              << ",pair=" << pairIndex
++              << ",position=" << position
++              << ",maxT=" << maxT
++              << ",wall_ms=" << result.wallMs
++              << ",cpu_ms=" << result.cpuMs
++              << ",balance=" << result.balance
++              << ",transactions=" << result.transactionCount
++              << ",synced_height=" << result.syncedHeight << std::endl;
++    return result;
++  };
++
++  std::cout << "BENCH_CONFIG,foreign_outputs="
++            << static_cast<uint64_t>(txCount) * outputsPerTx
++            << ",owned_v2_outputs=1"
++            << ",blocks=" << generator.getBlockchain().size()
++            << ",tip_height=" << tipHeight
++            << ",tip_hash=" << tipHash
++            << ",warmups_per_mode=" << warmups
++            << ",samples_per_mode=" << samples
++            << ",candidate_semantics=v2_plus_legacy_T0" << std::endl;
++
++  for (unsigned i = 0; i < warmups; ++i) {
++    if ((i & 1u) == 0) {
++      runOnce(64, "warmup", i, 0);
++      runOnce(1, "warmup", i, 1);
++    } else {
++      runOnce(1, "warmup", i, 0);
++      runOnce(64, "warmup", i, 1);
++    }
++  }
++
++  std::vector<Result> baseline;
++  std::vector<Result> candidate;
++  for (unsigned i = 0; i < samples; ++i) {
++    if ((i & 1u) == 0) {
++      baseline.push_back(runOnce(64, "recorded", i, 0));
++      candidate.push_back(runOnce(1, "recorded", i, 1));
++    } else {
++      candidate.push_back(runOnce(1, "recorded", i, 0));
++      baseline.push_back(runOnce(64, "recorded", i, 1));
++    }
++  }
++
++  auto percentile = [](const std::vector<Result>& values,
++                       bool cpu, double fraction) {
++    std::vector<double> sorted;
++    sorted.reserve(values.size());
++    for (const auto& value : values) {
++      sorted.push_back(cpu ? value.cpuMs : value.wallMs);
++    }
++    std::sort(sorted.begin(), sorted.end());
++    const std::size_t index = static_cast<std::size_t>(
++        std::ceil(fraction * sorted.size())) - 1;
++    return sorted.at(index);
++  };
++
++  const double baselineWallMedian = percentile(baseline, false, 0.5);
++  const double candidateWallMedian = percentile(candidate, false, 0.5);
++  std::cout << std::fixed << std::setprecision(3)
++            << "BENCH_SUMMARY,baseline_maxT=64,candidate_maxT=1"
++            << ",baseline_wall_median_ms=" << baselineWallMedian
++            << ",baseline_wall_p95_ms=" << percentile(baseline, false, 0.95)
++            << ",candidate_wall_median_ms=" << candidateWallMedian
++            << ",candidate_wall_p95_ms=" << percentile(candidate, false, 0.95)
++            << ",wall_speedup=" << baselineWallMedian / candidateWallMedian
++            << ",baseline_cpu_median_ms=" << percentile(baseline, true, 0.5)
++            << ",baseline_cpu_p95_ms=" << percentile(baseline, true, 0.95)
++            << ",candidate_cpu_median_ms=" << percentile(candidate, true, 0.5)
++            << ",candidate_cpu_p95_ms=" << percentile(candidate, true, 0.95)
++            << ",derived_baseline_aead_attempts_per_foreign=65"
++            << ",derived_candidate_aead_attempts_per_foreign=2"
++            << std::endl;
++}
++
++TEST(WalletLegacyBenchmark, LegacyCompatibilityBoundaryT44AndT259) {
++  System::Dispatcher dispatcher;
++  (void)dispatcher;
++  Logging::ConsoleLogger logger(Logging::ERROR);
++  CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
++      .testnet(true)
++      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
++      .upgradeHeightV5(1000000).upgradeHeightV6(1000000)
++      .currency();
++  TestBlockchainGenerator generator(currency);
++
++  auto fixedSecret = [](uint8_t multiplier, uint8_t addend) {
++    Crypto::SecretKey secret{};
++    for (std::size_t i = 0; i < sizeof(secret.data); ++i) {
++      secret.data[i] = static_cast<uint8_t>(i * multiplier + addend);
++    }
++    return secret;
++  };
++  CryptoNote::AccountKeys targetAccount{};
++  targetAccount.spendSecretKey = fixedSecret(29, 7);
++  const CryptoNote::PqWalletKeys target =
++      CryptoNote::derivePqWalletKeys(targetAccount.spendSecretKey);
++  const CryptoNote::PqWalletKeys sender =
++      CryptoNote::derivePqWalletKeys(fixedSecret(17, 9));
++
++  const uint64_t amount44 = 44000;
++  const uint64_t amount259 = 259000;
++  CryptoNote::Transaction legacy44 = makePqPayToLegacyV1(
++      sender, target, 1000000, amount44, 0x91, 44);
++  CryptoNote::Transaction legacy259 = makePqPayToLegacyV1(
++      sender, target, 1000000, amount259, 0x92, 259);
++  generator.setTxFee(CryptoNote::getObjectHash(legacy44), 1000000 - amount44);
++  generator.setTxFee(CryptoNote::getObjectHash(legacy259), 1000000 - amount259);
++  generator.addTxToBlockchain(legacy44);
++  generator.addTxToBlockchain(legacy259);
++  const uint32_t tipHeight =
++      static_cast<uint32_t>(generator.getBlockchain().size() - 1);
++  INodeTrivialRefreshStub node(generator);
++
++  struct BoundaryResult {
++    uint64_t balance;
++    std::size_t transactionCount;
++    std::map<uint32_t, int64_t> byT;
++  };
++  auto scan = [&](uint32_t maxT) {
++    CryptoNote::WalletLegacy wallet(currency, node, logger);
++    wallet.setPqLegacyScanWindow(maxT);
++    wallet.initWithKeys(targetAccount, "compatibility-boundary", 0);
++    const auto deadline =
++        std::chrono::steady_clock::now() + std::chrono::seconds(30);
++    while (wallet.pqSyncedHeight() < tipHeight &&
++           std::chrono::steady_clock::now() < deadline) {
++      std::this_thread::sleep_for(std::chrono::milliseconds(1));
++    }
++    EXPECT_GE(wallet.pqSyncedHeight(), tipHeight);
++    BoundaryResult result{wallet.actualBalance(), wallet.getTransactionCount(), {}};
++    for (std::size_t i = 0; i < result.transactionCount; ++i) {
++      const auto amounts = wallet.getTransactionSubaddressAmounts(i);
++      for (const auto& entry : amounts) result.byT[entry.first] += entry.second;
++    }
++    wallet.shutdown();
++    node.waitForAsyncContexts();
++    return result;
++  };
++
++  const BoundaryResult candidate = scan(1);
++  EXPECT_EQ(candidate.balance, 0u);
++  EXPECT_EQ(candidate.transactionCount, 0u);
++  EXPECT_TRUE(candidate.byT.empty());
++
++  const BoundaryResult baseline = scan(64);
++  EXPECT_EQ(baseline.balance, amount44);
++  EXPECT_EQ(baseline.transactionCount, 1u);
++  EXPECT_EQ(baseline.byT.at(44), static_cast<int64_t>(amount44));
++  EXPECT_EQ(baseline.byT.count(259), 0u);
++
++  const BoundaryResult recovery = scan(260);
++  EXPECT_EQ(recovery.balance, amount44 + amount259);
++  EXPECT_EQ(recovery.transactionCount, 2u);
++  EXPECT_EQ(recovery.byT.at(44), static_cast<int64_t>(amount44));
++  EXPECT_EQ(recovery.byT.at(259), static_cast<int64_t>(amount259));
++}
++
+ TEST(WalletLegacySmoke, RejectsUnboundedLegacyRecoveryWindow) {
+   System::Dispatcher dispatcher;
+   (void)dispatcher;

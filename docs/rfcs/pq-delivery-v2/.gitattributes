@@ -1,0 +1,6 @@
+# Keep recorded evidence byte-identical on Windows and Unix checkouts.
+*.md text eol=lf
+*.py text eol=lf
+evidence/** -text !eol whitespace=cr-at-eol
+# Unified patches contain meaningful blank context lines; preserve them too.
+evidence/synthetic/harness.patch -whitespace

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="42" failures="0" disabled="0" errors="0" timestamp="2026-09-07T19:47:56" time="35.651" name="AllTests">
+  <testsuite name="PqWalletIntegration" tests="34" failures="0" disabled="0" errors="0" time="35.29">
+    <testcase name="IncomingTransactionCreditsNativeBalance" status="run" time="0.02" classname="PqWalletIntegration" />
+    <testcase name="BalanceSurvivesSaveAndReload" status="run" time="0.033" classname="PqWalletIntegration" />
+    <testcase name="PaymentIdRoundTrip" status="run" time="0.034" classname="PqWalletIntegration" />
+    <testcase name="ReorgDetachReversesCredit" status="run" time="0.019" classname="PqWalletIntegration" />
+    <testcase name="AggregatedDepositReceivesAndSpends" status="run" time="0.025" classname="PqWalletIntegration" />
+    <testcase name="RestoreFromSeedNeedsDepositCountToRecoverDepositFunds" status="run" time="0.064" classname="PqWalletIntegration" />
+    <testcase name="SingleKeyIndexAttributesDepositsByT" status="run" time="0.022" classname="PqWalletIntegration" />
+    <testcase name="DepositRegistrySurvivesCrashAfterCreateTimeSave" status="run" time="0.032" classname="PqWalletIntegration" />
+    <testcase name="SingleKeyIndexContainerWithNoDepositsRoundTrips" status="run" time="0.036" classname="PqWalletIntegration" />
+    <testcase name="RescanPreservesSingleKeyIndexRegistry" status="run" time="0.036" classname="PqWalletIntegration" />
+    <testcase name="RescanPreservesTrackingIdentity" status="run" time="0.046" classname="PqWalletIntegration" />
+    <testcase name="RescanRecoversLegacyNonzeroTThroughWalletSynchronizer" status="run" time="0.042" classname="PqWalletIntegration" />
+    <testcase name="ManualLegacyWindowSurvivesRescanCycle" status="run" time="0.041" classname="PqWalletIntegration" />
+    <testcase name="RelayFailureRollsBackReservation" status="run" time="0.041" classname="PqWalletIntegration" />
+    <testcase name="RescanPreservesAndResetDiscardsSentPaymentMetadata" status="run" time="0.077" classname="PqWalletIntegration" />
+    <testcase name="DepositCreditReversedOnReorg" status="run" time="0.02" classname="PqWalletIntegration" />
+    <testcase name="TrackingWalletCannotSpend" status="run" time="0.023" classname="PqWalletIntegration" />
+    <testcase name="TrackingContainerFromPastScanHeightKeepsIdentity" status="run" time="0.058" classname="PqWalletIntegration" />
+    <testcase name="OfflineModeNeverStartsSynchronization" status="run" time="0.067" classname="PqWalletIntegration" />
+    <testcase name="NeverSyncedContainerStillKnowsGenesis" status="run" time="0.03" classname="PqWalletIntegration" />
+    <testcase name="TrackingWalletIssuesSingleKeyIndexSubNumbers" status="run" time="0.028" classname="PqWalletIntegration" />
+    <testcase name="TrackingWalletRefusesAggregatedMultikeyDeposits" status="run" time="0.023" classname="PqWalletIntegration" />
+    <testcase name="LockedOutputNotSpendableUntilUnlockHeight" status="run" time="0.027" classname="PqWalletIntegration" />
+    <testcase name="RescanRebuildsLedger" status="run" time="0.034" classname="PqWalletIntegration" />
+    <testcase name="IndexHITCReceiveAndSpendByAddressString" status="run" time="33.823" classname="PqWalletIntegration" />
+    <testcase name="AggregatedPerSubaddressMessageSigning" status="run" time="0.03" classname="PqWalletIntegration" />
+    <testcase name="ResetNeverReusesAnIv" status="run" time="0.081" classname="PqWalletIntegration" />
+    <testcase name="LegacyContainerIsUpgradedOnOpen" status="run" time="0.079" classname="PqWalletIntegration" />
+    <testcase name="MigrationNeverOverwritesAnExistingBackup" status="run" time="0.067" classname="PqWalletIntegration" />
+    <testcase name="EachMigrationTakesTheNextFreeBackupName" status="run" time="0.168" classname="PqWalletIntegration" />
+    <testcase name="LegacyContainerWithAWrongPasswordIsLeftAlone" status="run" time="0.055" classname="PqWalletIntegration" />
+    <testcase name="ClosingAWalletScrubsItsSecrets" status="run" time="0.026" classname="PqWalletIntegration" />
+    <testcase name="AFailedOpenLeavesNoSecretsBehind" status="run" time="0.033" classname="PqWalletIntegration" />
+    <testcase name="ChangingThePasswordDoesNotStrandTheOldKey" status="run" time="0.049" classname="PqWalletIntegration" />
+  </testsuite>
+  <testsuite name="WalletLegacySmoke" tests="7" failures="0" disabled="0" errors="0" time="0.32">
+    <testcase name="PqIdentityAndSigning" status="run" time="0.007" classname="WalletLegacySmoke" />
+    <testcase name="ForwardsSynchronizationActivityState" status="run" time="0.004" classname="WalletLegacySmoke" />
+    <testcase name="DetachedSeedNeverReturnsToSavedTrackingWallet" status="run" time="0.041" classname="WalletLegacySmoke" />
+    <testcase name="FailedProtectedMigrationCanRestoreDetachedSeed" status="run" time="0.006" classname="WalletLegacySmoke" />
+    <testcase name="ExtendedLegacyWindowRecoversT259AndStaysActive" status="run" time="0.154" classname="WalletLegacySmoke" />
+    <testcase name="RejectsUnboundedLegacyRecoveryWindow" status="run" time="0.003" classname="WalletLegacySmoke" />
+    <testcase name="RescanPreservesAndResetDiscardsStoredRecipientAndPaymentProof" status="run" time="0.105" classname="WalletLegacySmoke" />
+  </testsuite>
+  <testsuite name="WalletLegacyBenchmark" tests="1" failures="0" disabled="0" errors="0" time="0.041">
+    <testcase name="LegacyCompatibilityBoundaryT44AndT259" status="run" time="0.041" classname="WalletLegacyBenchmark" />
+  </testsuite>
+</testsuites>

@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "artifactCount": 19,
+  "collectionSha256": "13f4c0c9404074c50f27b634fda7319a9dd26d4a45199d46175d8eb4f5b8ba8a",
+  "artifacts": [
+    {
+      "path": "evidence/daemon/analyze_results.py",
+      "bytes": 4779,
+      "sha256": "1d2edefa0c91ea06fab03ceaa5279222ee0ad9aef8d31bd53bdf8114b77722df"
+    },
+    {
+      "path": "evidence/daemon/fixture-results.jsonl",
+      "bytes": 2591,
+      "sha256": "42b8be3f8a33e6281dd020264fe28dc1febffec638557391a0cf1d11c941506c"
+    },
+    {
+      "path": "evidence/daemon/summary.json",
+      "bytes": 2438,
+      "sha256": "8999eb8e1a061c789800dc5440e9e29f770d5250b926c5c0fda3d3a131372e96"
+    },
+    {
+      "path": "evidence/daemon/warm-ab-21pairs.csv",
+      "bytes": 14349,
+      "sha256": "1da3e79dbdcf8a28751956d847acc92d3d47fa21203f24170843de19ce612efc"
+    },
+    {
+      "path": "evidence/receiver/CMakeLists.txt",
+      "bytes": 1789,
+      "sha256": "adb9452a2560290244c3b9afa807585160646b0fbe8ccccd538d10d077c2bef6"
+    },
+    {
+      "path": "evidence/receiver/prototype_tests.cpp",
+      "bytes": 4447,
+      "sha256": "27e93449aa138150d394c939a532357fd546335339199b7dca5acbf3b8abf5ee"
+    },
+    {
+      "path": "evidence/receiver/prototype.cpp",
+      "bytes": 724,
+      "sha256": "cb6b6fa0eac9016f019eea6625a7718498965dd15fcdc1fc767a088d9ee39116"
+    },
+    {
+      "path": "evidence/receiver/prototype.h",
+      "bytes": 336,
+      "sha256": "1fa88504ef3ef928abd765c8b7e5275a9bcdf09036dacd6c371708b95d64385d"
+    },
+    {
+      "path": "evidence/receiver/README.md",
+      "bytes": 1675,
+      "sha256": "b9973e61af8a61e88983d88e27f1b374c3ccb37f34fa0cf6ba8290529919be23"
+    },
+    {
+      "path": "evidence/receiver/run_review_tests.ps1",
+      "bytes": 1314,
+      "sha256": "1da5da0e197969e2168d4009adf6aba4b5484854728078ea5718e15a68e0873b"
+    },
+    {
+      "path": "evidence/synthetic/ab-genesis-sync-4096-v2-outputs-release-final.csv",
+      "bytes": 2998,
+      "sha256": "d76152ce52e5dc1d1106c50b8ab4a6b9fc95cc6f2b432705d2859787f70acc74"
+    },
+    {
+      "path": "evidence/synthetic/ab-genesis-sync-4096-v2-outputs-release-final.txt",
+      "bytes": 7919,
+      "sha256": "1b8872471aa9e4efae940fb1211d5e8b652aa6e8e0f4735086597a602a705f0e"
+    },
+    {
+      "path": "evidence/synthetic/harness.patch",
+      "bytes": 16452,
+      "sha256": "55a22233cef752b4f5eb2b81785dc59645a5539ad6664b64ff0a2ae757cfee8f"
+    },
+    {
+      "path": "evidence/synthetic/run_ab.ps1",
+      "bytes": 1184,
+      "sha256": "b11bc511d7d5c64691ceb2fa428f097f229c8d3462026ea55471f53df2621e13"
+    },
+    {
+      "path": "evidence/synthetic/wallet-sync-regression.xml",
+      "bytes": 5619,
+      "sha256": "d18800429d40cc2df36c1a7a75b75e26d278d0f8e2600ada2b52b36aae2c4260"
+    },
+    {
+      "path": "evidence/tests/existing_builder.xml",
+      "bytes": 1049,
+      "sha256": "ecd26a5f84152df55954aadf898dec68785bf4b3010d13f19bd713cde82f6ca7"
+    },
+    {
+      "path": "evidence/tests/existing_derive.xml",
+      "bytes": 1705,
+      "sha256": "86910dbd18f46625371c96fb62b3bbc27f6a46746ed97b1704d480c2cf48f216"
+    },
+    {
+      "path": "evidence/tests/existing_scan.xml",
+      "bytes": 1566,
+      "sha256": "3918877aa06462abd9ceee612233935759231e1913892afdb24046e4e9c0134b"
+    },
+    {
+      "path": "evidence/tests/v2_only_prototype.xml",
+      "bytes": 1389,
+      "sha256": "e56060ce5048f83d22c7fca55c68d7bebf9fda780f17ef84441f6552ab098fbe"
+    }
+  ]
+}

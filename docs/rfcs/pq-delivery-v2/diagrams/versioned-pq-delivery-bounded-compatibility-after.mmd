@@ -1,0 +1,10 @@
+flowchart LR
+  S[Sender-controlled output bytes] --> N[Node: shape and spend validity]
+  N --> C[Chain: unversioned delivery context]
+  C --> V[Wallet: current-v2 attempt]
+  V -->|miss| L[Legacy T0 and wallet-owned bounded range]
+  P[Persisted recovery policy] -->|controls range| L
+  V --> O[AEAD and spend ownership checks]
+  L --> O
+  O -->|owned| R[Recognized wallet receipt]
+  O -->|not owned or invalid| D[No credit]

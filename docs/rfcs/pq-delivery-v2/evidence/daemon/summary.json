@@ -1,0 +1,59 @@
+{
+  "sample_design": {
+    "warmup_pairs": 2,
+    "recorded_pairs": 21,
+    "recorded_runs_per_variant": 21,
+    "order": "alternating; 11 baseline-first and 10 candidate-first pairs",
+    "cache_class": "warm filesystem/daemon; fresh in-memory wallet and fresh process every run",
+    "p95_method": "nearest rank"
+  },
+  "baseline64": {
+    "wall_ms": {"median": 3059.517, "p95": 3459.741},
+    "wallet_cpu_ms": {"median": 2218.75, "p95": 2343.75},
+    "daemon_cpu_ms": {"median": 1234.375, "p95": 1343.75},
+    "combined_cpu_ms": {"median": 3437.5, "p95": 3593.75},
+    "pq_outputs": 2832,
+    "v2_attempts": 2832,
+    "legacy_t0_attempts": 2832,
+    "legacy_window_trials": 178416
+  },
+  "candidate1": {
+    "wall_ms": {"median": 1926.155, "p95": 2234.055},
+    "wallet_cpu_ms": {"median": 1125.0, "p95": 1281.25},
+    "daemon_cpu_ms": {"median": 1203.125, "p95": 1453.125},
+    "combined_cpu_ms": {"median": 2328.125, "p95": 2453.125},
+    "pq_outputs": 2832,
+    "v2_attempts": 2832,
+    "legacy_t0_attempts": 2832,
+    "legacy_window_trials": 0
+  },
+  "baseline_over_candidate": {
+    "wall": {"median_ratio": 1.5884064367, "p95_ratio": 1.5486373433, "median_saved_ms": 1133.362, "p95_saved_ms": 1225.686},
+    "wallet_cpu": {"median_ratio": 1.9722222222, "p95_ratio": 1.8292682927, "median_saved_ms": 1093.75, "p95_saved_ms": 1062.5},
+    "daemon_cpu": {"median_ratio": 1.0259740260, "p95_ratio": 0.9247311828, "median_saved_ms": 31.25, "p95_saved_ms": -109.375},
+    "combined_cpu": {"median_ratio": 1.4765100671, "p95_ratio": 1.4649681529, "median_saved_ms": 1109.375, "p95_saved_ms": 1140.625}
+  },
+  "paired_wall": {
+    "candidate_faster_pairs": 21,
+    "tied_pairs": 0,
+    "baseline_faster_pairs": 0,
+    "paired_speedup_median": 1.5842348854,
+    "paired_delta_min_ms": 792.572,
+    "paired_delta_median_ms": 1128.981,
+    "paired_delta_max_ms": 1819.949,
+    "two_sided_exact_sign_test_p": 0.00000095367431640625,
+    "baseline_first_speedup_median": 1.5977659750,
+    "candidate_first_speedup_median": 1.5781425190
+  },
+  "state_invariants": {
+    "height_block_count": 14804,
+    "node_top_index": 14803,
+    "tip_hash": "4c39637697abc341c718b9adcfc623c7ad7ed8a74aaf32dfa09d814daa458fb3",
+    "wallet_state_hash": "30ca0e01a876e39d11accc97ec8e33278774d6ec608064c0a3ff8ec33f2c900b",
+    "actual_balance": 0,
+    "pending_balance": 0,
+    "transaction_count": 0,
+    "transfer_count": 0,
+    "recognized_outputs": 0
+  }
+}

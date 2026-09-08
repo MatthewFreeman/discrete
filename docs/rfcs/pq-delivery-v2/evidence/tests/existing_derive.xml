@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="16" failures="0" disabled="0" errors="0" timestamp="2026-09-07T19:49:21" time="0" name="AllTests">
+  <testsuite name="PqDerive" tests="16" failures="0" disabled="0" errors="0" time="0">
+    <testcase name="InputsHash" status="run" time="0" classname="PqDerive" />
+    <testcase name="OutContext" status="run" time="0" classname="PqDerive" />
+    <testcase name="OutContextIndexIsolation" status="run" time="0" classname="PqDerive" />
+    <testcase name="LegacyOutContextV1" status="run" time="0" classname="PqDerive" />
+    <testcase name="LegacyOutContextV1TIsolation" status="run" time="0" classname="PqDerive" />
+    <testcase name="OutContextV2DiffersFromLegacy" status="run" time="0" classname="PqDerive" />
+    <testcase name="AeadKey" status="run" time="0" classname="PqDerive" />
+    <testcase name="LegacyAeadKey" status="run" time="0" classname="PqDerive" />
+    <testcase name="SpendCommit" status="run" time="0" classname="PqDerive" />
+    <testcase name="Nullifier" status="run" time="0" classname="PqDerive" />
+    <testcase name="NullifierBindsOutpoint" status="run" time="0" classname="PqDerive" />
+    <testcase name="SpendCommitAndNullifierDiffer" status="run" time="0" classname="PqDerive" />
+    <testcase name="TxSigningDigest" status="run" time="0" classname="PqDerive" />
+    <testcase name="TxSigningDigestIsTamperSensitive" status="run" time="0" classname="PqDerive" />
+    <testcase name="ReservedCtMaskNamespaceUnused" status="run" time="0" classname="PqDerive" />
+    <testcase name="ReservedShieldedSerialNamespaceUnused" status="run" time="0" classname="PqDerive" />
+  </testsuite>
+</testsuites>

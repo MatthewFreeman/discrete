@@ -1,0 +1,11 @@
+flowchart LR
+  S[Sender-controlled output bytes] --> N[Node: height and version rules plus spend validity]
+  N --> C[Chain: committed transaction version]
+  C --> G[Wallet: deterministic version dispatch]
+  G -->|new version| V[Strict current-v2 attempt]
+  G -->|historical version| L[Historical bounded compatibility]
+  V --> O[AEAD and spend ownership checks]
+  L --> O
+  V -->|miss: no fallback| D[No credit]
+  O -->|owned| R[Recognized wallet receipt]
+  O -->|not owned or invalid| D
