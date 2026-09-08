@@ -72,6 +72,7 @@ PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher* sys
   handlers.emplace("getDepositScheme", jsonHandler<GetPqDepositScheme::Request, GetPqDepositScheme::Response>(std::bind(&PaymentServiceJsonRpcServer::handleGetPqDepositScheme, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("createDepositAddress", jsonHandler<CreatePqDepositAddress::Request, CreatePqDepositAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleCreatePqDepositAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("listDepositAddresses", jsonHandler<ListPqDepositAddresses::Request, ListPqDepositAddresses::Response>(std::bind(&PaymentServiceJsonRpcServer::handleListPqDepositAddresses, this, std::placeholders::_1, std::placeholders::_2)));
+  handlers.emplace("listDepositAddressesPage", jsonHandler<ListPqDepositAddressesPage::Request, ListPqDepositAddressesPage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleListPqDepositAddressesPage, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("enableLegacyDepositRescan", jsonHandler<EnableLegacyDepositRescan::Request, EnableLegacyDepositRescan::Response>(std::bind(&PaymentServiceJsonRpcServer::handleEnableLegacyDepositRescan, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("validateAddress", jsonHandler<ValidateAddress::Request, ValidateAddress::Response>(std::bind(&PaymentServiceJsonRpcServer::handleValidateAddress, this, std::placeholders::_1, std::placeholders::_2)));
   handlers.emplace("signMessage", jsonHandler<SignMessage::Request, SignMessage::Response>(std::bind(&PaymentServiceJsonRpcServer::handleSignMessage, this, std::placeholders::_1, std::placeholders::_2)));
@@ -328,6 +329,10 @@ std::error_code PaymentServiceJsonRpcServer::handleEnableLegacyDepositRescan(con
 
 std::error_code PaymentServiceJsonRpcServer::handleListPqDepositAddresses(const ListPqDepositAddresses::Request& request, ListPqDepositAddresses::Response& response) {
   return service.listPqDepositAddresses(response.addresses, response.indices);
+}
+
+std::error_code PaymentServiceJsonRpcServer::handleListPqDepositAddressesPage(const ListPqDepositAddressesPage::Request& request, ListPqDepositAddressesPage::Response& response) {
+  return service.listPqDepositAddressesPage(request, response);
 }
 
 }

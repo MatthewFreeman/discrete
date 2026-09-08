@@ -247,6 +247,26 @@ void ListPqDepositAddresses::Response::serialize(CryptoNote::ISerializer& serial
   serializer(indices, "indices");
 }
 
+void ListPqDepositAddressesPage::Request::serialize(CryptoNote::ISerializer& serializer) {
+  bool valid = serializer(offset, "offset");
+  valid &= serializer(limit, "limit");
+  valid &= serializer(expectedAccountNumber, "expectedAccountNumber");
+  valid &= serializer(expectedDepositCount, "expectedDepositCount");
+  if (!valid || limit == 0 || limit > 256 || expectedAccountNumber.empty() || expectedAccountNumber.size() > 64) {
+    throw RequestSerializationError();
+  }
+}
+
+void ListPqDepositAddressesPage::Response::serialize(CryptoNote::ISerializer& serializer) {
+  serializer(scheme, "scheme");
+  serializer(tracking, "tracking");
+  serializer(accountNumber, "accountNumber");
+  serializer(depositCount, "depositCount");
+  serializer(offset, "offset");
+  serializer(addresses, "addresses");
+  serializer(indices, "indices");
+}
+
 void EnableLegacyDepositRescan::Request::serialize(CryptoNote::ISerializer& serializer) {
   serializer(maxT, "maxT");
 }
