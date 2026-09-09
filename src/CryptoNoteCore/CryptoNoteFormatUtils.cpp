@@ -116,7 +116,7 @@ uint32_t get_block_height(const Block& b) {
 }
 
 bool check_inputs_types_supported(const TransactionPrefix& tx) {
-  const bool pqInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
+  const bool pqInputs = tx.version >= TRANSACTION_VERSION_1 && isPqTransfer(tx.txType);
   for (const auto& in : tx.inputs) {
     if (pqInputs) {
       if (in.type() != typeid(PqInput)) return false;
@@ -131,7 +131,7 @@ bool check_outs_valid(const TransactionPrefix& tx, std::string* error) {
   for (const TransactionOutput& out : tx.outputs) {
     if (tx.version >= TRANSACTION_VERSION_1) {
       if (out.target.type() == typeid(PqOutput)) {
-        if (tx.txType != TX_PQ) {
+        if (!isPqTransfer(tx.txType)) {
           if (error) *error = "PqOutput is not allowed for this tx type";
           return false;
         }

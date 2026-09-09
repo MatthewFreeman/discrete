@@ -55,6 +55,10 @@ struct PqSendRequest {
   // pre-activation transcript rather than silently signing for height 0 of a
   // chain they did not mean.
   uint32_t signingHeight = 0;
+  // Activation height of the mandatory outContext-v2 delivery declaration, taken
+  // from the Currency. signingHeight is compared against it to pick the declared
+  // transfer subtype, so a wallet never has to know the schedule itself.
+  uint32_t deliveryV2Height = 0xFFFFFFFFu;
 
   // Deposit scheme: decides each input's signing key. Under SingleKeyIndex the one
   // ML-DSA key authorizes every input; under AggregatedMultikey a deposit input is

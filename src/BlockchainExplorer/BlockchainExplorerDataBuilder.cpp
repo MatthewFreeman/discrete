@@ -233,7 +233,7 @@ bool BlockchainExplorerDataBuilder::fillTransactionDetails(const Transaction& tr
   transactionDetails.unlockHeight = transaction.unlockHeight;
   transactionDetails.totalOutputsAmount = get_outs_money_amount(transaction);
 
-  const bool pqOnlyInputs = transaction.version >= TRANSACTION_VERSION_1 && transaction.txType == TX_PQ;
+  const bool pqOnlyInputs = transaction.version >= TRANSACTION_VERSION_1 && isPqTransfer(transaction.txType);
   const bool freeRegTransaction = transaction.version >= TRANSACTION_VERSION_1 && transaction.txType == TX_FREE_REG;
   if (pqOnlyInputs) {
     uint64_t fee = 0;

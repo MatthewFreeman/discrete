@@ -2542,6 +2542,7 @@ PqSendResult WalletGreen::sendPqTransfer(const std::vector<PqSendOutput>& recipi
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
+  req.deliveryV2Height = m_currency.pqDeliveryV2Height();
   // The scheme drives per-input key selection inside buildPqSend (the one key vs a
   // per-deposit derived key for AggregatedMultikey deposit inputs).
   req.scheme = m_pqDepositScheme;
@@ -2679,6 +2680,7 @@ PqSendResult WalletGreen::preparePqTransfer(const std::vector<PqSendOutput>& rec
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
+  req.deliveryV2Height = m_currency.pqDeliveryV2Height();
   req.scheme = m_pqDepositScheme;
   for (const auto& address : sourceAddresses) {
     uint32_t bucket = 0;

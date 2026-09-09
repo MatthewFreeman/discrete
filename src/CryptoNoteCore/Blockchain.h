@@ -422,9 +422,18 @@ namespace CryptoNote {
     // Increment batch counter; commit if batch is full or we've caught up.
     void commitBatchOrBlock(bool forceSingle = false);
 
+    // `validationHeight` is the height of the block that would carry this tx.
+    // AT_TIP means "judge it against the current tip", which is what pool
+    // admission and block-template fill want. Block connection MUST pass the
+    // real block height instead: the delivery-declaration rule is height-
+    // dependent, so judging an old block against the current tip would reject
+    // valid history during a resync or a deep reorg.
+    static constexpr uint32_t AT_TIP = 0xFFFFFFFFu;
     bool checkTransactionInputs(const Transaction& tx, const Crypto::Hash& tx_prefix_hash,
-                                 uint32_t* pmax_used_block_height = nullptr);
-    bool checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height = nullptr);
+                                 uint32_t* pmax_used_block_height = nullptr,
+                                 uint32_t validationHeight = AT_TIP);
+    bool checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height = nullptr,
+                                 uint32_t validationHeight = AT_TIP);
     // TX_PQ input validation: resolves referenced outputs from the DB, runs the
     // context-free PQ checks (PqValidation), and rejects on-chain nullifier reuse.
     // No height gate — PQ is active from genesis.
