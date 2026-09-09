@@ -3042,6 +3042,10 @@ void WalletGreen::throwIfTrackingMode() const {
   }
 }
 
+bool WalletGreen::isTracking() const {
+  return getTrackingMode() == WalletTrackingMode::TRACKING;
+}
+
 WalletGreen::WalletTrackingMode WalletGreen::getTrackingMode() const {
   if (m_walletsContainer.get<RandomAccessIndex>().empty()) {
     return WalletTrackingMode::NO_ADDRESSES;
