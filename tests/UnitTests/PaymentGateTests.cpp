@@ -17,6 +17,10 @@
 
 #include "gtest/gtest.h"
 #include <numeric>
+#include <sstream>
+#include <stdexcept>
+#include <system_error>
+#include <Logging/StreamLogger.h>
 
 #include <System/Timer.h>
 #include <Common/StringTools.h>
@@ -751,3 +755,120 @@ TEST_F(PaymentGateTest, DISABLED_sendTransaction) {
     ASSERT_EQ(TEST_AMOUNT / 2, recvPayment[0].amount);
   }
 } */
+
+// The conditional page must distinguish an unregistered account from a valid
+// empty tail. The legacy full-list result remains compatible with existing clients.
+TEST_F(PaymentGateTest, PagedDepositListingDistinguishesUnregisteredFromEmptyTail) {
+  auto cfg = createWalletConfiguration("pg_paged_registration.bin");
+  unlink(cfg.walletFile.c_str());
+  generateNewWallet(currency, cfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::SingleKeyIndex);
+  auto service = createWalletService(cfg);
+
+  ListPqDepositAddressesPage::Request request;
+  request.limit = 1;
+  request.expectedAccountNumber = "not-yet-registered";
+  ListPqDepositAddressesPage::Response response;
+  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED),
+            service->listPqDepositAddressesPage(request, response));
+  std::vector<std::string> addresses;
+  std::vector<uint32_t> indices;
+  ASSERT_FALSE(service->listPqDepositAddresses(addresses, indices));
+  EXPECT_TRUE(addresses.empty());
+  EXPECT_TRUE(indices.empty());
+
+  std::string txHash;
+  ASSERT_FALSE(service->registerPqAccount(txHash));
+  bool registered = false;
+  uint32_t height = 0, txIndex = 0;
+  ASSERT_FALSE(service->getPqAccountStatus(registered, request.expectedAccountNumber, height, txIndex));
+  ASSERT_TRUE(registered);
+  ASSERT_FALSE(service->listPqDepositAddressesPage(request, response));
+  EXPECT_TRUE(response.addresses.empty());
+  EXPECT_EQ(request.expectedAccountNumber, response.accountNumber);
+
+  std::string address;
+  uint32_t index = 0;
+  ASSERT_FALSE(service->createPqDepositAddress(address, index));
+  EXPECT_EQ(make_error_code(CryptoNote::error::WRONG_PARAMETERS),
+            service->listPqDepositAddressesPage(request, response)); // stale count
+  request.expectedDepositCount = 1;
+  ASSERT_FALSE(service->listPqDepositAddressesPage(request, response));
+  ASSERT_EQ(1u, response.addresses.size());
+  EXPECT_EQ(address, response.addresses[0]);
+  ASSERT_EQ(1u, response.indices.size());
+  EXPECT_EQ(index, response.indices[0]);
+  EXPECT_EQ(1u, response.depositCount);
+
+  nodeStub.setTrustedResolver(false);
+  EXPECT_EQ(make_error_code(CryptoNote::error::UNTRUSTED_DAEMON),
+            service->listPqDepositAddressesPage(request, response));
+  nodeStub.setTrustedResolver(true);
+  ASSERT_FALSE(service->listPqDepositAddressesPage(request, response));
+  request.offset = 1;
+  ASSERT_FALSE(service->listPqDepositAddressesPage(request, response));
+  EXPECT_TRUE(response.addresses.empty());
+  EXPECT_TRUE(response.indices.empty());
+  ASSERT_FALSE(service->listPqDepositAddresses(addresses, indices));
+  ASSERT_EQ(1u, addresses.size());
+  EXPECT_EQ(address, addresses[0]);
+  ASSERT_EQ(1u, indices.size());
+  EXPECT_EQ(index, indices[0]);
+}
+
+TEST_F(PaymentGateTest, PagedDepositListingLogsExceptionsAndPreservesErrors) {
+  class ThrowingRegistrationNode : public INodeTrivialRefreshStub {
+  public:
+    using INodeTrivialRefreshStub::INodeTrivialRefreshStub;
+    enum Failure { None, System, Generic } failure = None;
+    void getPqAccount(const std::string& view, const std::string& spend,
+                      bool& registered, uint32_t& height, uint32_t& index,
+                      const Callback& callback) override {
+      if (failure == System) {
+        throw std::system_error(std::make_error_code(std::errc::io_error), "paged system failure");
+      }
+      if (failure == Generic) throw std::runtime_error("paged generic failure");
+      INodeTrivialRefreshStub::getPqAccount(view, spend, registered, height, index, callback);
+    }
+  } throwingNode(generator);
+
+  auto cfg = createWalletConfiguration("pg_paged_exceptions.bin");
+  unlink(cfg.walletFile.c_str());
+  generateNewWallet(currency, cfg, logger, dispatcher, nodeStub,
+                    CryptoNote::PqDepositScheme::SingleKeyIndex);
+  std::ostringstream output;
+  Logging::StreamLogger warningLogger(output, Logging::WARNING);
+  WalletGreen testWallet(dispatcher, currency, throwingNode, warningLogger);
+  WalletService service(currency, dispatcher, throwingNode, testWallet, cfg, warningLogger);
+  service.init();
+  ListPqDepositAddressesPage::Request request;
+  request.limit = 1;
+  request.expectedAccountNumber = "not-yet-registered";
+  ListPqDepositAddressesPage::Response response;
+
+  for (auto failure : {ThrowingRegistrationNode::System, ThrowingRegistrationNode::Generic}) {
+    throwingNode.failure = failure;
+    output.str("");
+    const auto expected = failure == ThrowingRegistrationNode::System
+        ? std::make_error_code(std::errc::io_error)
+        : make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    EXPECT_EQ(expected, service.listPqDepositAddressesPage(request, response));
+    EXPECT_NE(std::string::npos, output.str().find("WARNING"));
+    EXPECT_NE(std::string::npos, output.str().find("Error while listing deposit address page: "));
+    EXPECT_NE(std::string::npos, output.str().find(failure == ThrowingRegistrationNode::System
+        ? "paged system failure" : "paged generic failure"));
+  }
+
+  // Each catch must release the service lock and leave issued addresses alone.
+  throwingNode.failure = ThrowingRegistrationNode::None;
+  output.str("");
+  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED),
+            service.listPqDepositAddressesPage(request, response));
+  EXPECT_TRUE(output.str().empty());
+  EXPECT_EQ(0u, testWallet.getPqDepositCount());
+  std::vector<std::string> addresses;
+  std::vector<uint32_t> indices;
+  EXPECT_FALSE(service.listPqDepositAddresses(addresses, indices));
+  EXPECT_TRUE(addresses.empty());
+  EXPECT_TRUE(indices.empty());
+}

@@ -1733,6 +1733,8 @@ std::error_code WalletService::listPqDepositAddressesPage(const ListPqDepositAdd
     uint32_t regH = 0, regI = 0;
     const auto rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
     if (rc) return rc;
+    // Unlike the legacy full-list RPC's successful empty result, a conditional
+    // page must fail closed until its account identity can be confirmed.
     if (!registered) return make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED);
     const std::string account = CryptoNote::AccountNumber{regH, regI}.toString(gw->pqAccountFingerprint());
     const uint32_t count = gw->getPqDepositCount();
@@ -1753,8 +1755,10 @@ std::error_code WalletService::listPqDepositAddressesPage(const ListPqDepositAdd
       response.indices.push_back(index);
     }
   } catch (std::system_error& error) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit address page: " << error.what();
     return error.code();
-  } catch (std::exception&) {
+  } catch (std::exception& error) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit address page: " << error.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
   return std::error_code();
