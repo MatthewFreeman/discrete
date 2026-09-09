@@ -176,6 +176,8 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
   // 2. Output recognition. inputsHash seeds every output's out_context; the
   //    wallet-side helper derives it from the tx's PqInputs.
   CryptoPQ::Hash256 ih = pqTransactionInputsHash(tx);
+  const auto scanMode = tx.txType == TX_PQ_V2
+      ? CryptoPQ::PqScanMode::StrictV2 : CryptoPQ::PqScanMode::Compatible;
   for (uint32_t i = 0; i < tx.outputs.size(); ++i) {
     const TransactionOutput& out = tx.outputs[i];
     if (out.target.type() != typeid(PqOutput)) {
@@ -208,20 +210,11 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
       // which outContext-v2 reads directly out of the decrypted payload, so the
       // O(1) path recognises any T at the cost of a single AEAD attempt.
       //
-      // The legacy pre-v2 enumeration is OFF unless an operator asks for it.
-      // It used to widen automatically to m_depositCount, which made the window
-      // track the issued registry: a service with 10k deposit addresses paid a
-      // 10k-deep legacy retry on every FOREIGN output, because only our own
-      // outputs return early from the v2 fast path. That cost was silent, and it
-      // contradicted the documented "off by default" contract of
-      // setLegacyTWindowRescan / walletd's enableLegacyDepositRescan. The window
-      // is now exactly what was asked for and nothing more.
-      // A tx that declares TX_PQ_V2 cannot carry a pre-v2 output: after the
-      // activation height consensus refuses the old declaration, so the
-      // enumeration is dead work even when an operator has switched it on for
-      // the sake of older history.
-      const uint32_t maxLegacyT = tx.txType == TX_PQ_V2 ? 0 : m_legacyTWindowMaxT;
-      owned = CryptoPQ::scanPqOutputWithLegacyTWindow(m_scanKeys, ih, so, maxLegacyT);
+      // Preserve issued historical coverage. Declared-v2 scanning ignores both
+      // the issued range and the manual extension, including legacy T=0.
+      const uint32_t maxLegacyT = std::max(m_depositCount, m_legacyTWindowMaxT);
+      owned = CryptoPQ::scanPqOutputWithLegacyTWindow(
+          m_scanKeys, ih, so, maxLegacyT, scanMode);
       if (owned) {
         // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
         // and a base H-I-A-C account number both send at T=0, so an output there
@@ -238,12 +231,12 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the
       // shared-view-key deposit family routed by deposit spend key.
-      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
+      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, scanMode);
       if (!owned && m_depositCount > 0) {
         ensureDepositKeys(m_depositCount);
         auto agg = m_depositSpendPubs.empty()
             ? std::optional<CryptoPQ::PqAggregateOwned>{}
-            : CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so);
+            : CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so, scanMode);
         if (agg) {
           owned = agg->record;
           depositIndex = static_cast<uint32_t>(agg->spendPubIndex);

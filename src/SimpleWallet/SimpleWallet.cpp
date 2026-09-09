@@ -134,7 +134,7 @@ const command_line::arg_descriptor<bool> arg_testnet = { "testnet", "Used to dep
 const command_line::arg_descriptor<bool> arg_reset = { "reset", "Deprecated alias for --rescan. Kept because it has always meant \"discard the cache and resynchronize\", which never deleted anything; the destructive operation is the interactive 'reset' command.", false };
 const command_line::arg_descriptor<bool> arg_rescan = { "rescan", "Discard cache data and synchronize from scratch. Recipient addresses and payment proofs are kept.", false };
 const command_line::arg_descriptor<uint32_t> arg_scan_height = { "scan-height", "The height to begin scanning a wallet from", 0 };
-const command_line::arg_descriptor<uint32_t> arg_legacy_scan_window = { "legacy-scan-window", "Recovery only: also try the pre-v2 delivery format for subaddress indices below this value. Off (0) by default; current senders are always recognized without it. Costs extra work on every scanned output, so raise it only to recover a payment you believe was sent by outdated software", 0 };
+const command_line::arg_descriptor<uint32_t> arg_legacy_scan_window = { "legacy-scan-window", "Historical pre-v2 recovery range (exclusive): 64 by default, 0 disables enumeration. Declared TX_PQ_V2 ignores it. Larger ranges cost extra work on foreign historical outputs", 64 };
 const command_line::arg_descriptor< std::vector<std::string> > arg_command = { "command", "" };
 
 
@@ -436,7 +436,7 @@ simple_wallet::simple_wallet(System::Dispatcher& dispatcher, const CryptoNote::C
   m_daemon_no_verify(false),
   m_dump_keys_file(false),
   m_scan_height(0),
-  m_legacy_scan_window(0),
+  m_legacy_scan_window(64),
   m_currency(currency),
   m_logManager(log),
   logger(log, "simplewallet"),

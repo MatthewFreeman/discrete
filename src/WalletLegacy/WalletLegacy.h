@@ -82,12 +82,12 @@ class WalletLegacy :
   ITransfersObserver {
 
 public:
-  // Legacy pre-outContext-v2 recovery window; 0 (the default) disables the
-  // enumeration entirely. Bounded only so a typo cannot wedge the scanner.
+  // Preserve the released historical scan window of 64. An explicit 0
+  // disables enumeration; declared TX_PQ_V2 always ignores this window.
   static constexpr uint32_t MAX_PQ_LEGACY_SCAN_WINDOW = 65536;
 
   WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log,
-               uint32_t pqLegacyScanWindow = 0);
+               uint32_t pqLegacyScanWindow = 64);
   virtual ~WalletLegacy();
 
   virtual void addObserver(IWalletLegacyObserver* observer) override;
@@ -324,7 +324,7 @@ private:
   std::unique_ptr<WalletLedgerConsumer> m_pqConsumer;
   std::unique_ptr<PqTrackingKeys> m_pqTrackingKeys;
   std::string m_pqProtectedSpendMetadata;
-  uint32_t m_pqLegacyScanWindow = 0;
+  uint32_t m_pqLegacyScanWindow = 64;
 
   // Payer-side recipient labels captured at send time (the counterparty address is
   // not recoverable from PQ output scanning). Keyed by txid, surfaced through the

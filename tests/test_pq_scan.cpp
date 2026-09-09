@@ -139,6 +139,16 @@ TEST(PqScan, LegacyTZeroOutputStillRecognized) {
     EXPECT_EQ(owned->subaddrIndexT, 0u);
     EXPECT_EQ(owned->amount, amount);
     EXPECT_EQ(spendCommit(spend.first, owned->rho), o.spendCommit);
+
+    EXPECT_FALSE(scanPqOutput(scanKeysFor(m), ih, o, PqScanMode::StrictV2));
+    EXPECT_FALSE(scanPqOutputWithSharedSecret(
+        encapsulation.second, spend.first, ih, o, PqScanMode::StrictV2));
+    EXPECT_FALSE(scanPqOutputWithLegacyTWindow(
+        scanKeysFor(m), ih, o, 64, PqScanMode::StrictV2));
+    EXPECT_TRUE(scanPqOutputs(scanKeysFor(m), ih, {o}, PqScanMode::StrictV2).empty());
+    ASSERT_TRUE(scanPqOutputAggregate(view.second, {spend.first}, ih, o));
+    EXPECT_FALSE(scanPqOutputAggregate(
+        view.second, {spend.first}, ih, o, PqScanMode::StrictV2));
 }
 
 TEST(PqScan, LegacyTWindowPathsRespectExclusiveBound) {
@@ -190,6 +200,8 @@ TEST(PqScan, LegacyTWindowPathsRespectExclusiveBound) {
         scanKeysFor(m), ih, o, /*maxT=*/legacyT + 1);
     ASSERT_TRUE(legacyOnly.has_value());
     EXPECT_EQ(legacyOnly->subaddrIndexT, legacyT);
+    EXPECT_FALSE(scanPqOutputWithLegacyTWindow(
+        scanKeysFor(m), ih, o, legacyT + 1, PqScanMode::StrictV2));
 }
 
 TEST(PqScan, IgnoresOthersOutput) {
@@ -292,6 +304,11 @@ TEST(PqScan, AggregateRecognizesCorrectDeposit) {
     EXPECT_EQ(owned->record.amount, 4242u);
     EXPECT_EQ(owned->record.outputIndex, 5u);
     EXPECT_EQ(spendCommit(dep1.first, owned->record.rho), o.spendCommit);
+    auto strict = scanPqOutputAggregate(
+        view.second, spendPubs, ih, o, PqScanMode::StrictV2);
+    ASSERT_TRUE(strict);
+    EXPECT_EQ(strict->spendPubIndex, owned->spendPubIndex);
+    EXPECT_EQ(strict->record.amount, owned->record.amount);
 }
 
 TEST(PqScan, AggregateRoutesEachDepositToItsOwnKey) {
@@ -342,4 +359,21 @@ TEST(PqScan, AggregateAmountTamperNotRecognized) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(PqScan, StrictV2RecognizesCurrentRoutesWithoutRecovery) {
+    SeedMaster m = pat<32>(2, 7);
+    auto view = deriveViewKeys(m);
+    auto spend = deriveSpendKeys(m);
+    Hash256 ih = inputsHash(fixedInputs());
+    for (uint64_t t : {uint64_t(0), uint64_t(44), uint64_t(9000), UINT64_MAX}) {
+        auto out = buildScanOutput(view.first, spend.first, ih, 0, 1234, t);
+        auto owned = scanPqOutputWithLegacyTWindow(
+            scanKeysFor(m), ih, out, 0, PqScanMode::StrictV2);
+        ASSERT_TRUE(owned);
+        EXPECT_EQ(owned->subaddrIndexT, t);
+        EXPECT_EQ(owned->amount, 1234u);
+        EXPECT_FALSE(scanPqOutput(
+            scanKeysFor(pat<32>(7, 9)), ih, out, PqScanMode::StrictV2));
+    }
 }
