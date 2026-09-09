@@ -612,21 +612,51 @@ TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsCurrentV2NonzeroT) {
     EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
 }
 
-TEST(WalletLedger, SingleKeyIndexAutomaticallyCreditsLegacyNonzeroT) {
+// The issued deposit cursor must NOT widen the legacy window. It used to, which
+// meant a service with a large registry silently paid a registry-deep pre-v2
+// retry on every foreign output — the fast v2 path only returns early for our
+// OWN outputs, so during sync almost everything reaches the enumeration. The
+// window is opt-in, and the cursor alone leaves it off.
+TEST(WalletLedger, IssuedDepositCursorDoesNotEnableLegacyEnumeration) {
     PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
     PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
 
     WalletLedger st(me);
-    // This is the next-index cursor, so [0, 45) includes the issued T=44.
+    // A cursor well past the issued T=44 still must not enumerate.
     st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 45);
+    ASSERT_EQ(st.legacyTWindowRescanMaxT(), 0u);
 
     Funded f = payToPubLegacyV1(
         them, me.viewPub, me.spendPub, 1000000, 50000, 0xB4, 44);
+    EXPECT_FALSE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 0u);
+    EXPECT_TRUE(st.outputs().empty());
+
+    // Opting in recovers the very same output, so the coverage is available on
+    // request rather than lost.
+    st.setLegacyTWindowRescan(45);
     ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
     EXPECT_EQ(st.balance(), 50000u);
     EXPECT_EQ(st.depositBalance(44), 50000u);
     ASSERT_EQ(st.outputs().size(), 1u);
     EXPECT_EQ(st.outputs()[0].depositIndex, 44u);
+}
+
+// Current senders are unaffected by the window: outContext-v2 carries T inside
+// the AEAD payload, so a nonzero-T receipt is recognised with the enumeration
+// fully off. This is what makes the opt-in default safe.
+TEST(WalletLedger, CurrentSenderNonzeroTNeedsNoLegacyWindow) {
+    PqWalletKeys me   = derivePqWalletKeys(spendSecret(9, 1));
+    PqWalletKeys them = derivePqWalletKeys(spendSecret(7, 3));
+
+    WalletLedger st(me);
+    st.setDepositConfig(PqDepositScheme::SingleKeyIndex, 0);
+    ASSERT_EQ(st.legacyTWindowRescanMaxT(), 0u);
+
+    Funded f = payToPub(them, me.viewPub, me.spendPub, 1000000, 50000, 0xB5, 9000);
+    ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+    EXPECT_EQ(st.balance(), 50000u);
+    EXPECT_EQ(st.depositBalance(9000), 50000u);
 }
 
 // T is 64 bits on the wire; the ledger's deposit buckets are 32. The SENDER

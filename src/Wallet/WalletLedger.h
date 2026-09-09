@@ -109,11 +109,12 @@ public:
   // deposit count grows.
   void setDepositConfig(PqDepositScheme scheme, uint32_t depositCount);
 
-  // MANUAL RECOVERY WINDOW EXTENSION — OFF by default (maxT=0). Normal
-  // SingleKeyIndex scanning tries outContext-v2 first and, only on miss,
-  // enumerates legacy T values already issued by this wallet. Setting maxT
-  // above the issued cursor extends that fallback across [0, maxT), which can
-  // recover an operator-supplied address range after metadata loss.
+  // MANUAL LEGACY RECOVERY WINDOW — OFF by default (maxT=0), and off means off:
+  // the issued deposit cursor does NOT widen it. SingleKeyIndex scanning is
+  // outContext-v2 only unless maxT > 0, in which case a miss additionally
+  // brute-forces the pre-v2 derivation across T in [0, maxT). Use it to recover
+  // an operator-supplied address range after metadata loss; it costs one SHA3 +
+  // AEAD per T on every foreign output, so leave it at 0 for normal operation.
   void setLegacyTWindowRescan(uint32_t maxT) { m_legacyTWindowMaxT = maxT; }
   uint32_t legacyTWindowRescanMaxT() const { return m_legacyTWindowMaxT; }
 

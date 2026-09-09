@@ -77,10 +77,11 @@ namespace {
 
 const uint64_t ACCOUNT_CREATE_TIME_ACCURACY = 24 * 60 * 60;
 
-// How many subaddress indices T this single-identity wallet tries when scanning
-// (see initSync). Payments to H-I-A-T-C addresses with T >= this window are not
-// recognized; raising it costs one SHA3 + AEAD per extra T per foreign output.
-const uint32_t SUBADDRESS_SCAN_WINDOW = 64;
+// Legacy pre-outContext-v2 recovery window, OFF by default. Current senders put
+// T inside the AEAD payload, so any T is recognised in O(1) and this costs
+// nothing to leave at zero. A nonzero value additionally brute-forces the pre-v2
+// derivation across T in [0, window) on every FOREIGN output — one SHA3 + AEAD
+// per T — so it is opt-in via --legacy-scan-window. See setPqLegacyScanWindow.
 
 // Header on the wallet cache blob once it carries PQ sections. Absent on legacy
 // (pre-PQ) caches, which were a bare transfers-sync blob.
@@ -264,7 +265,8 @@ public:
   BlockchainSynchronizer& m_sync;
 };
 
-WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log) :
+WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log,
+                           uint32_t pqLegacyScanWindow) :
   m_state(NOT_INITIALIZED),
   m_currency(currency),
   m_node(node),
@@ -276,6 +278,7 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_blockchainSync(node, m_logger.getLogger(), currency.genesisBlockHash()),
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
 {
+  m_pqLegacyScanWindow = std::min(pqLegacyScanWindow, MAX_PQ_LEGACY_SCAN_WINDOW);
   addObserver(m_onInitSyncStarter.get());
   m_logger(DEBUGGING) << "WalletLegacy instance created";
 }
@@ -531,22 +534,27 @@ void WalletLegacy::initSync() {
     m_blockchainSync.addConsumer(m_pqConsumer.get());
   }
 
-  // Subaddress deciphering: the sender bakes the routing index T into the AEAD
-  // key, so the scanner must enumerate candidate indices — with no window
-  // configured only T=0 is tried and payments to H-I-A-T-C variants of this
-  // identity would be invisible. This wallet holds one key pair, so the
-  // SingleKeyIndex scheme applies: T attributes, spend authority stays with the
-  // primary key. The window is a scan cost/coverage trade-off (one SHA3 + AEAD
-  // per T per foreign output).
+  // This wallet holds one key pair, so the SingleKeyIndex scheme applies: the
+  // routing index T attributes a receipt, spend authority stays with the primary
+  // key. Current senders carry T inside the AEAD payload, so every T — including
+  // H-I-A-T-C deposits — is recognised by the single outContext-v2 attempt.
+  //
+  // Only pre-v2 senders baked T into the AEAD key, and those need the index
+  // guessed. That enumeration is off unless --legacy-scan-window asks for it:
+  // this wallet cannot issue an H-I-A-T-C address, so it can only receive at a
+  // nonzero T if the operator published one from elsewhere (walletd), and paying
+  // the retry on every foreign output by default is pure loss for everyone else.
   if (m_pqConsumer) {
-    m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex,
-                                           SUBADDRESS_SCAN_WINDOW);
+    // SingleKeyIndex ignores the deposit count (T is read out of the decrypted
+    // payload), so this only selects the scheme.
+    m_pqConsumer->state().setDepositConfig(PqDepositScheme::SingleKeyIndex, 0);
+    m_pqConsumer->state().setLegacyTWindowRescan(m_pqLegacyScanWindow);
   }
 
   m_logger(INFO) << "PQ ledger initialized: mode "
                  << (keys.spendSecretKey != NULL_SECRET_KEY ? "full" : "tracking")
                  << ", sync timestamp " << syncStart.timestamp
-                 << ", subaddress scan window " << SUBADDRESS_SCAN_WINDOW;
+                 << ", legacy scan window " << m_pqLegacyScanWindow;
 
   m_state = INITIALIZED;
 
@@ -691,6 +699,25 @@ void WalletLegacy::shutdown() {
 }
 
 void WalletLegacy::rescan() {
+  rebuild(true);
+}
+
+void WalletLegacy::setPqLegacyScanWindow(uint32_t window) {
+  throwIf(window > MAX_PQ_LEGACY_SCAN_WINDOW, CryptoNote::error::WRONG_PARAMETERS);
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  throwIf(m_state == LOADING || m_state == SAVING, CryptoNote::error::WRONG_STATE);
+  m_pqLegacyScanWindow = window;
+  if (m_pqConsumer) {
+    m_pqConsumer->state().setLegacyTWindowRescan(window);
+  }
+}
+
+// Widening the window only changes what a scan RECOGNISES, so history already
+// walked under a narrower window has to be walked again for the new range to
+// mean anything. rebuild(true) keeps the cache-backed metadata; the window
+// itself is runtime-only and resets to the constructed value on reload.
+void WalletLegacy::rescanWithPqLegacyScanWindow(uint32_t window) {
+  setPqLegacyScanWindow(window);
   rebuild(true);
 }
 
