@@ -1050,3 +1050,68 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+
+// Positive current-format delivery through every ledger dispatch path. These
+// synthetic funding references are local ledger fixtures, not chain UTXOs.
+TEST(WalletLedger, DeclaredV2CreditsPrimarySingleAndAggregateWithRecoveryEnabled) {
+    const auto me = derivePqWalletKeys(spendSecret(9, 1));
+    const auto them = derivePqWalletKeys(spendSecret(7, 3));
+    for (unsigned route : {0u, 1u, 2u}) {
+        WalletLedger st(me);
+        const bool single = route == 1;
+        st.setDepositConfig(single ? PqDepositScheme::SingleKeyIndex
+                                   : PqDepositScheme::AggregatedMultikey, 3);
+        st.setLegacyTWindowRescan(64);
+        const auto depositKey = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 2);
+        Funded f = payToPub(them, me.viewPub, route == 2 ? depositKey.first : me.spendPub,
+                           1000000, 50000, 0xD0 + route, single ? 9000 : 0);
+        f.tx.txType = TX_PQ_V2;
+        const auto digest = pqSigningDigest(f.tx, 950000);
+        f.tx.pqSignatures[0] = CryptoPQ::dsa_sign(them.spendSk, digest.data(), digest.size());
+        f.txid = getObjectHash(f.tx);
+        ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+        EXPECT_EQ(st.balance(), 50000u);
+        ASSERT_EQ(st.outputs().size(), 1u);
+        EXPECT_EQ(st.outputs()[0].depositIndex,
+                  single ? 9000u : route == 2 ? 2u : PQ_PRIMARY_DEPOSIT);
+        EXPECT_EQ(st.spendableInputs().size(), 1u);
+        EXPECT_FALSE(st.processTransaction(f.tx, f.txid, 100));
+        EXPECT_EQ(st.balance(), 50000u);
+        st.rollbackToHeight(100);
+        EXPECT_EQ(st.balance(), 0u);
+        ASSERT_TRUE(st.processTransaction(f.tx, f.txid, 100));
+        EXPECT_EQ(st.balance(), 50000u);
+    }
+}
+
+
+TEST(WalletLedger, DeclaredV2NeverUsesHistoricalFallbackInAnyDispatchPath) {
+    const auto me = derivePqWalletKeys(spendSecret(9, 1));
+    const auto them = derivePqWalletKeys(spendSecret(7, 3));
+    for (unsigned route : {0u, 1u, 2u, 3u}) {
+        const bool single = route == 1 || route == 3;
+        const uint64_t t = route == 3 ? 5 : 0;
+        const auto depositKey = CryptoPQ::deriveDepositSpendKeys(me.seedMaster, 2);
+        const auto scheme = single ? PqDepositScheme::SingleKeyIndex
+                                   : PqDepositScheme::AggregatedMultikey;
+        Funded legacy = payToPubLegacyV1(them, me.viewPub,
+            route == 2 ? depositKey.first : me.spendPub, 1000000, 50000, 0xE0+route, t);
+        WalletLedger historical(me);
+        historical.setDepositConfig(scheme, 3);
+        historical.setLegacyTWindowRescan(64);
+        ASSERT_TRUE(historical.processTransaction(legacy.tx, legacy.txid, 90));
+        EXPECT_EQ(historical.balance(), 50000u);
+
+        // Scanner-dispatch fixture only: deliberately not re-signed after the
+        // marker change, never submitted to consensus or a network.
+        legacy.tx.txType=TX_PQ_V2;
+        legacy.txid=getObjectHash(legacy.tx);
+        WalletLedger strict(me);
+        strict.setDepositConfig(scheme, 3);
+        strict.setLegacyTWindowRescan(64);
+        EXPECT_FALSE(strict.processTransaction(legacy.tx, legacy.txid, 100));
+        EXPECT_EQ(strict.balance(), 0u);
+        EXPECT_TRUE(strict.outputs().empty());
+    }
+}

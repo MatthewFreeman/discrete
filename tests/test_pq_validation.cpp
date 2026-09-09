@@ -547,3 +547,17 @@ TEST(PqDeliveryVersion, DeclaredV2PassesTheSameShapeAndInputRules) {
     // cannot be relabelled in flight.
     EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, &nfs, &err));
 }
+
+TEST(PqDeliveryVersion, CorrectlySignedV2AcceptsResolvedHistoricalOwnership) {
+    BuiltTx b = buildSignedTx(1000000, 900000);
+    const auto historicalCommit = b.resolved[0].spendCommit;
+    b.tx.txType = TX_PQ_V2;
+    resign(b);
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionSemantic(b.tx, &err)) << err;
+    std::vector<Crypto::Hash> nullifiers;
+    EXPECT_TRUE(checkPqTransactionInputs(
+        b.tx, b.resolved, kMinFee, &nullifiers, &err)) << err;
+    ASSERT_EQ(nullifiers.size(), 1u);
+    EXPECT_EQ(b.resolved[0].spendCommit, historicalCommit);
+}

@@ -1574,9 +1574,96 @@ bool runBlockWitnessIsolation() {
   return ok;
 }
 
+
+// Ordinary positive lifecycle at a test-only delivery activation. No P2P or RPC:
+// mature coinbase -> historical TX_PQ -> TX_PQ_V2 -> spend of the v2 receipt.
+bool runDeliveryV2HistoricalSpend() {
+  using namespace CryptoNote;
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  const Currency currency = CurrencyBuilder(logger).testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(11).upgradeHeightV6(12).pqDeliveryV2Height(15).currency();
+  const std::filesystem::path dataDir("pq_delivery_v2_positive_test_data");
+  std::error_code ec;
+  std::filesystem::create_directories(dataDir, ec);
+  System::Dispatcher dispatcher;
+  Core core(currency, nullptr, logger, dispatcher);
+  CoreConfig config; config.configFolder=dataDir.string();
+  MinerConfig minerConfig;
+  if (!expect(core.init(config, minerConfig, false), "delivery: init")) return false;
+  bool ok = [&]() {
+    test_generator gen(currency);
+    gen.setBlockchain(&core.get_blockchain_storage());
+    AccountBase miner; miner.generate();
+    Block genesis;
+    if (!expect(core.getBlockByHash(core.getBlockIdByHeight(0), genesis), "delivery: genesis")) return false;
+    std::vector<size_t> genesisSizes;
+    gen.addBlock(genesis, 0, 0, genesisSizes, 0);
+    uint64_t ts=static_cast<uint64_t>(std::time(nullptr))-86400;
+    const uint64_t step=currency.difficultyTarget()*10;
+    for (unsigned i=0;i<13;++i,ts+=step) {
+      if (!expect(mineBlock(core,currency,gen,miner,ts), "delivery: fund")) return false;
+    }
+    Block first;
+    if (!expect(core.getBlockByHash(core.getBlockIdByHeight(1),first), "delivery: coinbase")) return false;
+    PqSpendInput input{};
+    input.prevTxid=getObjectHash(first.baseTransaction);
+    input.amount=first.baseTransaction.outputs.at(0).amount;
+    input.rho=CryptoPQ::coinbaseRho(miner.pqSpendPk(),1,0);
+    auto recipient=pqKeysFromPattern(9,2);
+    auto next=pqKeysFromPattern(4,4);
+    constexpr uint64_t fee=50;
+
+    auto include = [&](const Transaction& tx) {
+      const auto id=getObjectHash(tx);
+      const auto blob=toBinaryArray(tx);
+      tx_verification_context tvc{};
+      core.handleIncomingTransaction(tx,id,blob.size(),tvc,false,core.getCurrentBlockchainHeight());
+      if (!expect(tvc.m_added_to_pool && !tvc.m_verification_failed, "delivery: valid transfer admitted")) return false;
+      gen.setTxFee(id,fee);
+      if (!expect(mineBlockWithTxs(core,currency,gen,miner,ts,{tx}), "delivery: valid transfer mined")) return false;
+      ts+=step;
+      return true;
+    };
+
+    auto historical=buildPqTransaction({input},
+        {PqSendOutput{recipient.viewPub,recipient.spendPub,input.amount-fee}},
+        miner.pqSpendPk(),miner.pqSpendSk());
+    if (!expect(core.getCurrentBlockchainHeight()==14 && historical.txType==TX_PQ,
+                "delivery: historical transfer at H-1") || !include(historical)) return false;
+    WalletLedger ledger(recipient);
+    if (!expect(ledger.processTransaction(historical,getObjectHash(historical),14),
+                "delivery: historical receipt recognized")) return false;
+    auto historicalInputs=ledger.spendableInputs();
+    if (!expect(historicalInputs.size()==1, "delivery: historical receipt spendable")) return false;
+
+    PqSigningContext signing;
+    signing.txType=pqTransferTypeForHeight(core.getCurrentBlockchainHeight(),currency.pqDeliveryV2Height());
+    auto current=buildPqTransaction(historicalInputs,
+        {PqSendOutput{next.viewPub,next.spendPub,input.amount-2*fee}},
+        recipient.spendPub,recipient.spendSk,0,{},signing);
+    if (!expect(core.getCurrentBlockchainHeight()==15 && current.txType==TX_PQ_V2,
+                "delivery: newly signed transfer at H") || !include(current)) return false;
+    WalletLedger receiver(next);
+    if (!expect(receiver.processTransaction(current,getObjectHash(current),15),
+                "delivery: strict-v2 recipient recognized")) return false;
+    const auto currentInputs=receiver.spendableInputs();
+    if (!expect(currentInputs.size()==1, "delivery: v2 receipt spendable")) return false;
+    auto onward=buildPqTransaction(currentInputs,
+        {PqSendOutput{recipient.viewPub,recipient.spendPub,input.amount-3*fee}},
+        next.spendPub,next.spendSk,0,{},signing);
+    return include(onward) && expect(core.getCurrentBlockchainHeight()==17,
+        "delivery: historical and v2 outputs both spent across activation");
+  }();
+  core.deinit();
+  std::filesystem::remove_all(dataDir,ec);
+  return ok;
+}
+
 }  // namespace
 
 int main() {
+  if (!runDeliveryV2HistoricalSpend()) return 1;
   if (!runCoroutineStack()) {
     std::cerr << "[FAIL] PQ dispatcher-coroutine stack test" << std::endl;
     return 1;

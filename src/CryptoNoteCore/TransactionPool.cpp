@@ -357,6 +357,11 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     std::lock_guard<std::recursive_mutex> lock(m_transactions_lock);
     std::unordered_set<Crypto::Hash> ready_tx_ids;
     for (const auto& tx : m_transactions) {
+      // Cached input validity does not authorize a subtype at a new height.
+      if (tx.tx.version == TRANSACTION_VERSION_1 && isPqTransfer(tx.tx.txType) &&
+          !m_currency.isPqTransferTypeAllowedAt(tx.tx.txType, m_core.getCurrentBlockchainHeight())) {
+        continue;
+      }
       TransactionCheckInfo checkInfo(tx);
       if (m_validated_transactions.find(tx.id) != m_validated_transactions.end()) {
         ready_tx_ids.insert(tx.id);
@@ -477,6 +482,12 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
 
     for (auto i = m_fee_index.begin(); i != m_fee_index.end(); ++i) {
       const auto& txd = *i;
+
+      // Re-evaluate the delivery era before either cached or uncached readiness.
+      if (txd.tx.version == TRANSACTION_VERSION_1 && isPqTransfer(txd.tx.txType) &&
+          !m_currency.isPqTransferTypeAllowedAt(txd.tx.txType, m_core.getCurrentBlockchainHeight())) {
+        continue;
+      }
 
       size_t blockSizeLimit = (txd.fee == 0) ? median_size : max_total_size;
       if (blockSizeLimit < total_size + txd.blobSize) {

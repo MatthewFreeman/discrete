@@ -107,7 +107,7 @@ PqBuiltOutput buildPqOutput(const KemPublicKey& recipientViewPub,
   scan.encPayload = output.encPayload;
   scan.spendCommit = output.spendCommit;
   auto selfCheck = scanPqOutputWithSharedSecret(
-      encapsulation.second, recipientSpendPub, inputsHash, scan);
+      encapsulation.second, recipientSpendPub, inputsHash, scan, PqScanMode::StrictV2);
   if (!selfCheck || selfCheck->subaddrIndexT != subaddrIndexT) {
     throw std::runtime_error("buildPqOutput: sender self-check failed");
   }
