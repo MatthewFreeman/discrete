@@ -315,7 +315,7 @@ std::error_code PaymentServiceJsonRpcServer::handleGetPqAccountStatus(const GetP
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleGetPqDepositScheme(const GetPqDepositScheme::Request& request, GetPqDepositScheme::Response& response) {
-  return service.getPqDepositScheme(response.scheme, response.depositCount);
+  return service.getPqDepositScheme(response.scheme, response.depositCount, response.tracking);
 }
 
 std::error_code PaymentServiceJsonRpcServer::handleCreatePqDepositAddress(const CreatePqDepositAddress::Request& request, CreatePqDepositAddress::Response& response) {
