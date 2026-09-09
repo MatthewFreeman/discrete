@@ -22,6 +22,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <fstream>
+#include <functional>
+#include <limits>
 #include <mutex>
 #include <numeric>
 #include <set>
@@ -1067,11 +1069,9 @@ TEST(PqWalletIntegration, RescanPreservesTrackingIdentity) {
   boost::filesystem::remove(path);
 }
 
-// Exact recovery chain: a released legacy sender pays issued T=44, the wallet has
-// already scanned past that block without the range, then its registry grows to
-// cursor 45 and rescan(0) revisits history. The output must be recognized, attributed
-// to deposit 44, and rediscovered by a fresh process from the metadata-only rescan
-// file even if no post-sync save occurred.
+// The issued cursor alone must not enable legacy enumeration. Explicit recovery
+// must revisit a skipped T=44 receipt and preserve its attribution and registry.
+// A fresh process must opt in again: the walletd recovery range is runtime-only.
 TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
@@ -1121,13 +1121,20 @@ TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer)
     ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
     pumpUntil(dispatcher, wallet,
               [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
+    EXPECT_EQ(wallet.getActualBalance(), 0u);
+    EXPECT_EQ(wallet.getTransactionCount(), 0u);
+
+    wallet.enableLegacyDepositRescan(/*maxT=*/45);
+    ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
+    pumpUntil(dispatcher, wallet,
+              [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
     EXPECT_EQ(wallet.getActualBalance(), amount);
     EXPECT_EQ(wallet.pqDepositBalance(44), amount);
     ASSERT_EQ(wallet.getTransactionCount(), 1u);
     EXPECT_EQ(wallet.getTransaction(0).hash, legacyTxid);
 
     // Deliberately do not save after recovery: the rescan file itself must retain
-    // enough identity metadata for a new process to rescan and recover again.
+    // enough identity metadata for a new process to opt in and recover again.
     wallet.shutdown();
   }
   {
@@ -1137,6 +1144,12 @@ TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer)
               [&reopened, tipHeight]() { return reopened.pqSyncedHeight() >= tipHeight; });
     EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
     EXPECT_EQ(reopened.getPqDepositCount(), 44u);
+    EXPECT_EQ(reopened.getActualBalance(), 0u);
+    EXPECT_EQ(reopened.getTransactionCount(), 0u);
+    reopened.enableLegacyDepositRescan(/*maxT=*/45);
+    ASSERT_NO_THROW(reopened.rescan(/*scanHeight=*/0));
+    pumpUntil(dispatcher, reopened,
+              [&reopened, tipHeight]() { return reopened.pqSyncedHeight() >= tipHeight; });
     EXPECT_EQ(reopened.getActualBalance(), amount);
     EXPECT_EQ(reopened.pqDepositBalance(44), amount);
     ASSERT_EQ(reopened.getTransactionCount(), 1u);
@@ -1146,7 +1159,7 @@ TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer)
   boost::filesystem::remove(path);
 }
 
-// The manual window is only for metadata-loss recovery beyond the issued cursor.
+// The manual window enables legacy nonzero-T recovery independently of the cursor.
 // It is set before rescan, so WalletGreen—not the soon-to-be-destroyed ledger—must
 // carry it through the internal shutdown/load cycle.
 TEST(PqWalletIntegration, ManualLegacyWindowSurvivesRescanCycle) {
@@ -1187,7 +1200,7 @@ TEST(PqWalletIntegration, ManualLegacyWindowSurvivesRescanCycle) {
   node.updateObservers();
   pumpUntil(dispatcher, wallet,
             [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
-  EXPECT_EQ(wallet.getActualBalance(), 0u);  // cursor 45 excludes T=45
+  EXPECT_EQ(wallet.getActualBalance(), 0u);  // legacy enumeration has not been enabled
 
   wallet.enableLegacyDepositRescan(/*maxT=*/46);
   ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
@@ -1198,7 +1211,7 @@ TEST(PqWalletIntegration, ManualLegacyWindowSurvivesRescanCycle) {
 
   // The extension is deliberately session-local. Reusing the same WalletGreen
   // object after a normal shutdown must not leak T=45 scanning into the next
-  // load; the persisted issued cursor still ends at 45 and excludes T=45.
+  // load; the persisted issued cursor must not implicitly re-enable enumeration.
   wallet.shutdown();
   ASSERT_NO_THROW(wallet.load(path, "pass"));
   pumpUntil(dispatcher, wallet,
@@ -1967,6 +1980,214 @@ TEST(WalletLegacySmoke, ForwardsSynchronizationActivityState) {
   EXPECT_FALSE(observer.result());
   EXPECT_EQ((std::vector<bool>{true, false}), observer.activityStates());
   wallet.removeObserver(&observer);
+  wallet.shutdown();
+}
+
+namespace {
+// Wait for completed synchronization cycles, without polling wallet state while
+// the scanner is writing it. Rebuild calls initAndLoad only after joining the old
+// worker, so arming there excludes the save phase's intermediate sync cycle.
+class LegacyRecoverySyncWaiter : public CryptoNote::IWalletLegacyObserver {
+public:
+  void arm() {
+    std::lock_guard<std::mutex> lock(mutex);
+    completed = false;
+    result.clear();
+  }
+  void synchronizationCompleted(std::error_code ec) override {
+    std::lock_guard<std::mutex> lock(mutex);
+    result = ec;
+    completed = true;
+    condition.notify_one();
+  }
+  bool wait() {
+    std::unique_lock<std::mutex> lock(mutex);
+    return condition.wait_for(lock, std::chrono::seconds(10),
+                              [&] { return completed; }) && !result;
+  }
+private:
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool completed = false;
+  std::error_code result;
+};
+
+class LegacyRecoveryWallet : public CryptoNote::WalletLegacy {
+public:
+  LegacyRecoveryWallet(const CryptoNote::Currency& currency, CryptoNote::INode& node,
+                       Logging::ILogger& logger, uint32_t window = 0)
+      : WalletLegacy(currency, node, logger, window) {
+    addObserver(&sync);
+  }
+  ~LegacyRecoveryWallet() override { removeObserver(&sync); }
+  void initAndLoad(std::istream& source, const std::string& password) override {
+    sync.arm();
+    const bool reject = rejectNextLoad;
+    rejectNextLoad = false;
+    WalletLegacy::initAndLoad(source, reject ? password + "-injected-wrong" : password);
+  }
+  LegacyRecoverySyncWaiter sync;
+  bool rejectNextLoad = false;
+};
+
+CryptoNote::AccountKeys legacyRecoveryTestKeys() {
+  CryptoNote::AccountKeys keys{};
+  for (std::size_t i = 0; i < sizeof(keys.spendSecretKey.data); ++i) {
+    keys.spendSecretKey.data[i] = static_cast<uint8_t>(17 + 13 * i);
+  }
+  return keys;
+}
+
+void expectRecoveryError(const std::function<void()>& action, CryptoNote::error::WalletErrorCodes code) {
+  try {
+    action();
+    ADD_FAILURE() << "Expected wallet error " << static_cast<int>(code);
+  } catch (const std::system_error& e) {
+    EXPECT_EQ(e.code(), make_error_code(code));
+  }
+}
+} // namespace
+
+TEST(WalletLegacySmoke, LegacyWindowValidationDoesNotChangeConfiguration) {
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  auto currency = CryptoNote::CurrencyBuilder(logger).testnet(true).currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  for (uint32_t accepted : {0u, 1u, 45u, 65536u}) {
+    CryptoNote::WalletLegacy wallet(currency, node, logger, accepted);
+    EXPECT_EQ(wallet.pqLegacyScanWindow(), accepted);
+  }
+  CryptoNote::WalletLegacy wallet(currency, node, logger, 45);
+  for (uint32_t rejected : {65537u, std::numeric_limits<uint32_t>::max()}) {
+    expectRecoveryError([&] {
+      CryptoNote::WalletLegacy invalid(currency, node, logger, rejected);
+    }, CryptoNote::error::WRONG_PARAMETERS);
+    expectRecoveryError([&] { wallet.setPqLegacyScanWindow(rejected); },
+                        CryptoNote::error::WRONG_PARAMETERS);
+    EXPECT_EQ(wallet.pqLegacyScanWindow(), 45u);
+  }
+  wallet.setPqLegacyScanWindow(0);
+  EXPECT_EQ(wallet.pqLegacyScanWindow(), 0u);
+}
+
+TEST(WalletLegacySmoke, LegacyRecoveryRejectsUninitializedWalletWithoutChangingWindow) {
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  auto currency = CryptoNote::CurrencyBuilder(logger).testnet(true).currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  LegacyRecoveryWallet wallet(currency, node, logger);
+  expectRecoveryError([&] { wallet.rescanWithPqLegacyScanWindow(45); },
+                      CryptoNote::error::WRONG_STATE);
+  EXPECT_EQ(wallet.pqLegacyScanWindow(), 0u);
+  wallet.setPqLegacyScanWindow(45); // front ends may configure before initialization
+  wallet.initWithKeys(legacyRecoveryTestKeys(), "pass", 0);
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.pqLegacyScanWindow(), 45u);
+  wallet.shutdown();
+}
+
+TEST(WalletLegacySmoke, LegacyWindowAppliesAtRebuildAndCanBeReappliedOnReopen) {
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  auto currency = CryptoNote::CurrencyBuilder(logger).testnet(true)
+      .upgradeHeightV2(1).upgradeHeightV3(1).upgradeHeightV4(1)
+      .upgradeHeightV5(1000000).upgradeHeightV6(1000000).currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  const auto keys = legacyRecoveryTestKeys();
+  const auto mine = CryptoNote::derivePqWalletKeys(keys.spendSecretKey);
+  auto other = keys.spendSecretKey;
+  other.data[0] ^= 0x55;
+  const auto them = CryptoNote::derivePqWalletKeys(other);
+  auto addReceipt = [&](bool legacy, uint64_t route, uint64_t amount, uint8_t seed) {
+    auto tx = legacy ? makePqPayToLegacyV1(them, mine, 1000000, amount, seed, route)
+                     : makePqPayTo(them, mine, 1000000, amount, seed, route);
+    generator.setTxFee(CryptoNote::getObjectHash(tx), 1000000 - amount);
+    generator.addTxToBlockchain(tx);
+  };
+  addReceipt(true, 0, 70000, 0x81);    // zero-window legacy primary control
+  addReceipt(true, 44, 200000, 0x82);  // historical nonzero route
+  addReceipt(false, 9000, 100000, 0x83);
+  LegacyRecoveryWallet wallet(currency, node, logger);
+  wallet.initWithKeys(keys, "pass", 0);
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.actualBalance(), 170000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 2u);
+
+  // A setting change must not alter a currently running consumer. This benign,
+  // sequential check fails on PR33 without trying to provoke a C++ data race.
+  wallet.setPqLegacyScanWindow(45);
+  EXPECT_EQ(wallet.pqLegacyScanWindow(), 45u);
+  wallet.sync.arm();
+  addReceipt(true, 44, 300000, 0x84);
+  addReceipt(false, 9001, 400000, 0x85);
+  node.updateObservers();
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.actualBalance(), 570000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 3u);
+
+  wallet.rescanWithPqLegacyScanWindow(45);
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.actualBalance(), 1070000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 5u);
+  wallet.rescan();
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.actualBalance(), 1070000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 5u);
+
+  wallet.sync.arm();
+  addReceipt(true, 44, 500000, 0x86); // later in-range receipt needs no rescan
+  addReceipt(true, 45, 600000, 0x87); // exclusive upper bound must still hold
+  addReceipt(false, 9002, 50000, 0x88);
+  node.updateObservers();
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.actualBalance(), 1620000u);
+  EXPECT_EQ(wallet.getTransactionCount(), 7u);
+
+  const uint32_t rememberedWindow = wallet.pqLegacyScanWindow();
+  std::stringstream snapshot;
+  CryptoNote::WalletHelper::SaveWalletResultObserver saved;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(wallet, saved);
+    auto result = saved.saveResult.get_future();
+    wallet.save(snapshot, true, false); // force real scanning after reopen
+    ASSERT_FALSE(result.get());
+  }
+  wallet.shutdown();
+  LegacyRecoveryWallet reopened(currency, node, logger, rememberedWindow);
+  CryptoNote::WalletHelper::InitWalletResultObserver loaded;
+  {
+    CryptoNote::WalletHelper::IWalletRemoveObserverGuard guard(reopened, loaded);
+    auto result = loaded.initResult.get_future();
+    reopened.initAndLoad(snapshot, "pass");
+    ASSERT_FALSE(result.get());
+  }
+  ASSERT_TRUE(reopened.sync.wait());
+  EXPECT_EQ(reopened.actualBalance(), 1620000u);
+  EXPECT_EQ(reopened.getTransactionCount(), 7u);
+  EXPECT_EQ(reopened.pqLegacyScanWindow(), 45u);
+  reopened.shutdown();
+}
+
+TEST(WalletLegacySmoke, LegacyRecoveryReportsReloadFailureAndAllowsExplicitRetry) {
+  Logging::ConsoleLogger logger(Logging::ERROR);
+  auto currency = CryptoNote::CurrencyBuilder(logger).testnet(true).currency();
+  TestBlockchainGenerator generator(currency);
+  INodeTrivialRefreshStub node(generator);
+  LegacyRecoveryWallet wallet(currency, node, logger);
+  const auto keys = legacyRecoveryTestKeys();
+  wallet.initWithKeys(keys, "pass", 0);
+  ASSERT_TRUE(wallet.sync.wait());
+  const auto address = wallet.getAddress();
+  wallet.rejectNextLoad = true;
+  expectRecoveryError([&] { wallet.rescanWithPqLegacyScanWindow(45); },
+                      CryptoNote::error::WRONG_PASSWORD);
+  wallet.sync.arm();
+  wallet.initWithKeys(keys, "pass", 0);
+  ASSERT_TRUE(wallet.sync.wait());
+  EXPECT_EQ(wallet.getAddress(), address);
+  EXPECT_EQ(wallet.pqLegacyScanWindow(), 45u);
+  wallet.rescanWithPqLegacyScanWindow(45);
+  ASSERT_TRUE(wallet.sync.wait());
   wallet.shutdown();
 }
 

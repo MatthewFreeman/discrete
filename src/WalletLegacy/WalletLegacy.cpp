@@ -278,7 +278,8 @@ WalletLegacy::WalletLegacy(const CryptoNote::Currency& currency, INode& node, Lo
   m_blockchainSync(node, m_logger.getLogger(), currency.genesisBlockHash()),
   m_onInitSyncStarter(new SyncStarter(m_blockchainSync))
 {
-  m_pqLegacyScanWindow = std::min(pqLegacyScanWindow, MAX_PQ_LEGACY_SCAN_WINDOW);
+  validatePqLegacyScanWindow(pqLegacyScanWindow);
+  m_pqLegacyScanWindow = pqLegacyScanWindow;
   addObserver(m_onInitSyncStarter.get());
   m_logger(DEBUGGING) << "WalletLegacy instance created";
 }
@@ -702,30 +703,44 @@ void WalletLegacy::rescan() {
   rebuild(true);
 }
 
-void WalletLegacy::setPqLegacyScanWindow(uint32_t window) {
+void WalletLegacy::validatePqLegacyScanWindow(uint32_t window) {
   throwIf(window > MAX_PQ_LEGACY_SCAN_WINDOW, CryptoNote::error::WRONG_PARAMETERS);
+}
+
+void WalletLegacy::setPqLegacyScanWindow(uint32_t window) {
+  validatePqLegacyScanWindow(window);
   std::unique_lock<std::mutex> lock(m_cacheMutex);
-  throwIf(m_state == LOADING || m_state == SAVING, CryptoNote::error::WRONG_STATE);
+  throwIf(m_isStopping || m_state == LOADING || m_state == SAVING,
+          CryptoNote::error::WRONG_STATE);
   m_pqLegacyScanWindow = window;
-  if (m_pqConsumer) {
-    m_pqConsumer->state().setLegacyTWindowRescan(window);
-  }
+  // initSync applies this to the replacement consumer before starting its worker.
+  // m_cacheMutex does not protect the active consumer's scanning thread.
+}
+
+uint32_t WalletLegacy::pqLegacyScanWindow() const {
+  std::unique_lock<std::mutex> lock(m_cacheMutex);
+  return m_pqLegacyScanWindow;
 }
 
 // Widening the window only changes what a scan RECOGNISES, so history already
 // walked under a narrower window has to be walked again for the new range to
-// mean anything. rebuild(true) keeps the cache-backed metadata; the window
-// itself is runtime-only and resets to the constructed value on reload.
+// mean anything. The window survives rebuilds in this object, but is runtime-only:
+// a new object needs the front end to reapply its saved configuration.
 void WalletLegacy::rescanWithPqLegacyScanWindow(uint32_t window) {
-  setPqLegacyScanWindow(window);
-  rebuild(true);
+  validatePqLegacyScanWindow(window);
+  {
+    std::unique_lock<std::mutex> lock(m_cacheMutex);
+    throwIf(m_isStopping || m_state != INITIALIZED, CryptoNote::error::WRONG_STATE);
+    m_pqLegacyScanWindow = window;
+  }
+  rebuild(true, true);
 }
 
 void WalletLegacy::reset() {
   rebuild(false);
 }
 
-void WalletLegacy::rebuild(bool preserveSentPayments) {
+void WalletLegacy::rebuild(bool preserveSentPayments, bool reportErrors) {
   try {
     std::error_code saveError;
     std::stringstream ss;
@@ -736,15 +751,25 @@ void WalletLegacy::rebuild(bool preserveSentPayments) {
       saveError = saveWaiter.waitSave();
     }
 
+    if (reportErrors && saveError) {
+      throw std::system_error(saveError);
+    }
+
     if (!saveError) {
       shutdown();
       InitWaiter initWaiter;
       WalletHelper::IWalletRemoveObserverGuard initGuarantee(*this, initWaiter);
       initAndLoad(ss, m_password);
-      initWaiter.waitInit();
+      const std::error_code initError = initWaiter.waitInit();
+      if (reportErrors && initError) {
+        throw std::system_error(initError);
+      }
     }
   } catch (std::exception& e) {
     m_logger(Logging::ERROR) << "exception while rebuilding wallet: " << e.what();
+    if (reportErrors) {
+      throw;
+    }
   }
 }
 
