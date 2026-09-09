@@ -41,6 +41,10 @@
 
 namespace CryptoPQ {
 
+// Compatibility is for unmarked historical transfers. A declared-v2 transfer
+// must never fall back to a legacy derivation, even during a recovery rescan.
+enum class PqScanMode { Compatible, StrictV2 };
+
 // What a wallet records for an owned PQ output. Contains NO secret key — the
 // spend secret is re-derived on demand at spend time, never persisted here.
 struct PqOwnedOutput {
@@ -70,36 +74,40 @@ struct PqScanOutput {
 
 // The shared receiver/sender recognition predicate after ML-KEM has recovered
 // the candidate shared secret. Receiver scanning calls this after decapsulation;
-// payment-proof verification and sender self-check call it after re-encapsulation.
-// Keeping one implementation prevents the proof path from drifting from the
-// wallet's actual ownership rules.
+// the current sender self-check explicitly selects StrictV2. Payment proofs
+// separately establish spend authority; they do not prove recipient delivery.
 std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
     const KemShared& sharedSecret,
     const DsaPublicKey& recipientSpendPub,
     const Hash256& inputsHash,
-    const PqScanOutput& out);
+    const PqScanOutput& out,
+    PqScanMode mode = PqScanMode::Compatible);
 
 // Try to recognize ONE output. Tries outContext-v2 first (T is read back from
-// the decrypted payload, not enumerated), then falls back once to the legacy
-// pre-v2 derivation at T=0. Returns the owned record on success, nullopt
+// the decrypted payload, not enumerated). Compatible mode then falls back to
+// the pre-v2 derivation at T=0; StrictV2 does not. Returns the owned record or nullopt
 // otherwise (not ours, OR a legacy nonzero-T output, OR tampered —
 // indistinguishable by design).
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
-                                          const PqScanOutput& out);
+                                          const PqScanOutput& out,
+                                          PqScanMode mode = PqScanMode::Compatible);
 
 // SingleKeyIndex compatibility path. Decapsulates once, tries the normal
-// outContext-v2 / legacy-T0 path first, and only on miss enumerates legacy T in
-// [1, maxT). This keeps current-format recognition O(1) while accepting outputs
+// outContext-v2 first. Compatible mode tries legacy T=0 then [1, maxT) on miss;
+// StrictV2 skips both regardless of maxT. Compatible mode can recover outputs
 // created by released pre-v2 senders for locally issued nonzero T values.
 std::optional<PqOwnedOutput> scanPqOutputWithLegacyTWindow(
     const PqScanKeys& keys, const Hash256& inputsHash,
-    const PqScanOutput& out, uint64_t maxT);
+    const PqScanOutput& out, uint64_t maxT,
+    PqScanMode mode = PqScanMode::Compatible);
 
+// StrictV2 disables both T=0 fallback and the bounded legacy window above.
 // Scan every output of one transaction.
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
-                                         const std::vector<PqScanOutput>& outputs);
+                                         const std::vector<PqScanOutput>& outputs,
+                                         PqScanMode mode = PqScanMode::Compatible);
 
 // Low-level legacy-only recovery primitive. Brute-forces the pre-outContext-v2
 // derivation across [0, maxT). Normal SingleKeyIndex scanning uses the combined
@@ -130,6 +138,7 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
     const KemSecretKey& viewSk,
     const std::vector<DsaPublicKey>& spendPubs,
     const Hash256& inputsHash,
-    const PqScanOutput& out);
+    const PqScanOutput& out,
+    PqScanMode mode = PqScanMode::Compatible);
 
 }  // namespace CryptoPQ

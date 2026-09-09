@@ -1069,10 +1069,10 @@ TEST(PqWalletIntegration, RescanPreservesTrackingIdentity) {
 
 // Exact recovery chain: a released legacy sender pays issued T=44, the wallet has
 // already scanned past that block without the range, then its registry grows to
-// cursor 45 and rescan(0) revisits history. The output must be recognized, attributed
-// to deposit 44, and rediscovered by a fresh process from the metadata-only rescan
-// file even if no post-sync save occurred.
-TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer) {
+// cursor 45 and an explicit recovery window lets rescan(0) revisit history.
+// The output must be attributed to deposit 44 and rediscovered after reopening
+// with the same explicit window, even if no post-sync save occurred.
+TEST(PqWalletIntegration, ExplicitWindowRecoversLegacyNonzeroTThroughWalletSynchronizer) {
   System::Dispatcher dispatcher;
   Logging::ConsoleLogger logger(Logging::ERROR);
   CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logger)
@@ -1118,6 +1118,7 @@ TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer)
       ASSERT_EQ(wallet.reservePqDepositIndex(), t);
     }
 
+    wallet.enableLegacyDepositRescan(/*maxT=*/45);
     ASSERT_NO_THROW(wallet.rescan(/*scanHeight=*/0));
     pumpUntil(dispatcher, wallet,
               [&wallet, tipHeight]() { return wallet.pqSyncedHeight() >= tipHeight; });
@@ -1133,6 +1134,8 @@ TEST(PqWalletIntegration, RescanRecoversLegacyNonzeroTThroughWalletSynchronizer)
   {
     CryptoNote::WalletGreen reopened(dispatcher, currency, node, logger);
     ASSERT_NO_THROW(reopened.load(path, "pass"));
+    reopened.enableLegacyDepositRescan(/*maxT=*/45);
+    ASSERT_NO_THROW(reopened.rescan(/*scanHeight=*/0));
     pumpUntil(dispatcher, reopened,
               [&reopened, tipHeight]() { return reopened.pqSyncedHeight() >= tipHeight; });
     EXPECT_EQ(reopened.getPqDepositScheme(), CryptoNote::PqDepositScheme::SingleKeyIndex);
