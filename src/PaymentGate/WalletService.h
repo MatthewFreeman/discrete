@@ -112,10 +112,11 @@ public:
   std::error_code getPqDepositScheme(std::string& scheme, uint32_t& depositCount);
   std::error_code createPqDepositAddress(std::string& address, uint32_t& index);
   std::error_code listPqDepositAddresses(std::vector<std::string>& addresses, std::vector<uint32_t>& indices);
-  // Volatile SingleKeyIndex legacy-window extension. Normal scanning covers
-  // the issued cursor automatically; use this before `reset` only to recover
-  // beyond locally retained metadata. WalletGreen carries it through reset's
-  // internal reload, but a new process starts at zero again.
+  // Volatile SingleKeyIndex legacy-window extension, OFF unless set. Normal
+  // scanning is outContext-v2 only and does NOT enumerate the issued cursor, so
+  // set this before `reset` to recover a suspected pre-v2 deposit. WalletGreen
+  // carries it through reset's internal reload, but a new process starts at
+  // zero again.
   std::error_code enableLegacyDepositRescan(uint32_t maxT);
   std::error_code sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                   std::vector<std::string>& paymentProofs);

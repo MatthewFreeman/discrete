@@ -229,6 +229,8 @@ namespace CryptoNote
     std::string m_wallet_file;
     uint16_t m_daemon_port;
     uint32_t m_scan_height;
+    // Recovery-only pre-v2 subaddress enumeration width; 0 disables it.
+    uint32_t m_legacy_scan_window;
     bool m_restore_wallet;                // recover flag
     bool m_non_deterministic;             // old 2-random generation
     bool m_daemon_ssl;

@@ -205,16 +205,18 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
 
     if (m_depositScheme == PqDepositScheme::SingleKeyIndex) {
       // One key pair; deposits are distinguished by the subaddress index T,
-      // which outContext-v2 reads directly out of the decrypted payload. Try
-      // that O(1) path first, then enumerate only when it misses so outputs
-      // created by released pre-v2 senders at an issued nonzero T remain
-      // receivable.
-      // m_depositCount is the next issued SingleKeyIndex T, so [0, count)
-      // covers every address this wallet handed out. The manual recovery knob
-      // can still extend that window for an operator-supplied range. The
-      // combined scanner decapsulates once and enumerates only after v2/T=0
-      // misses.
-      const uint32_t maxLegacyT = std::max(m_depositCount, m_legacyTWindowMaxT);
+      // which outContext-v2 reads directly out of the decrypted payload, so the
+      // O(1) path recognises any T at the cost of a single AEAD attempt.
+      //
+      // The legacy pre-v2 enumeration is OFF unless an operator asks for it.
+      // It used to widen automatically to m_depositCount, which made the window
+      // track the issued registry: a service with 10k deposit addresses paid a
+      // 10k-deep legacy retry on every FOREIGN output, because only our own
+      // outputs return early from the v2 fast path. That cost was silent, and it
+      // contradicted the documented "off by default" contract of
+      // setLegacyTWindowRescan / walletd's enableLegacyDepositRescan. The window
+      // is now exactly what was asked for and nothing more.
+      const uint32_t maxLegacyT = m_legacyTWindowMaxT;
       owned = CryptoPQ::scanPqOutputWithLegacyTWindow(m_scanKeys, ih, so, maxLegacyT);
       if (owned) {
         // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
