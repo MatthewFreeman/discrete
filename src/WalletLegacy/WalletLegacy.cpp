@@ -1217,6 +1217,7 @@ PqSendResult WalletLegacy::sendPqTransferWithSeed(
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
+  req.deliveryV2Height = m_currency.pqDeliveryV2Height();
   // Single key pair: outputs attributed to a subaddress index T (see initSync)
   // are still authorized by the primary spend key.
   req.scheme = PqDepositScheme::SingleKeyIndex;
@@ -1326,6 +1327,7 @@ PqSendResult WalletLegacy::preparePqTransferWithSeed(
   std::memcpy(req.genesisId.data(), m_currency.genesisBlockHash().data,
               req.genesisId.size());
   req.signingHeight = pqSigningHeight();
+  req.deliveryV2Height = m_currency.pqDeliveryV2Height();
   req.scheme = PqDepositScheme::SingleKeyIndex;
 
   std::vector<PqSpendInput> spendable = pqSpendableInputs();

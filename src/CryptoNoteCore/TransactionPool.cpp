@@ -159,7 +159,7 @@ bool getPqAccountRegistrationId(const Transaction& tx, Crypto::Hash& accountId) 
     // the input — get_inputs_money_amount would read 0 and falsely reject. Its
     // balance and PQ fee floor are enforced by checkTransactionInputs ->
     // checkPqInputs below.
-    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && isPqTransfer(tx.txType);
     const bool freeRegTransaction = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_FREE_REG;
     uint64_t fee = 0;
     if (!pqOnlyInputs) {

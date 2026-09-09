@@ -1893,13 +1893,15 @@ bool Blockchain::haveTransactionKeyImagesAsSpent(const Transaction& tx) {
   return false;
 }
 
-bool Blockchain::checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height) {
+bool Blockchain::checkTransactionInputs(const Transaction& tx, uint32_t* pmax_used_block_height,
+                                        uint32_t validationHeight) {
   Crypto::Hash tx_prefix_hash = getObjectHash(*static_cast<const TransactionPrefix*>(&tx));
-  return checkTransactionInputs(tx, tx_prefix_hash, pmax_used_block_height);
+  return checkTransactionInputs(tx, tx_prefix_hash, pmax_used_block_height, validationHeight);
 }
 
 bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Hash& tx_prefix_hash,
-                                         uint32_t* pmax_used_block_height) {
+                                         uint32_t* pmax_used_block_height,
+                                         uint32_t validationHeight) {
   // Discrete: only PQ transactions are accepted. Legacy v1 (pre-PQ) txs are rejected.
   if (tx.version == TRANSACTION_VERSION_1) {
     // First-registration-wins is chain state, so a registration tx that was valid
@@ -1909,11 +1911,24 @@ bool Blockchain::checkTransactionInputs(const Transaction& tx, const Crypto::Has
     // runs at pool admission and again when the block template is filled, before a
     // miner spends any work on it. Paid registrations ride on TX_PQ, free ones on
     // TX_FREE_REG — both are covered.
-    if ((tx.txType == TX_PQ || tx.txType == TX_FREE_REG) && isPqAccountAlreadyRegistered(tx)) {
+    if ((isPqTransfer(tx.txType) || tx.txType == TX_FREE_REG) && isPqAccountAlreadyRegistered(tx)) {
       logger(INFO, BRIGHT_WHITE) << "Account already registered, rejecting tx " << getObjectHash(tx);
       return false;
     }
-    if (tx.txType == TX_PQ) {
+    if (isPqTransfer(tx.txType)) {
+      // The delivery declaration is judged at the height that would carry the
+      // tx, never at the tip: pre-fork blocks stay valid on resync, and the
+      // marker cannot be backdated below the activation height.
+      const uint32_t height =
+          validationHeight == AT_TIP ? getCurrentBlockchainHeight() : validationHeight;
+      if (!m_currency.isPqTransferTypeAllowedAt(tx.txType, height)) {
+        logger(INFO, BRIGHT_WHITE)
+            << "Rejecting tx " << getObjectHash(tx) << ": PQ delivery subtype "
+            << static_cast<int>(tx.txType) << " is not accepted at height " << height
+            << " (outContext-v2 declaration activates at "
+            << m_currency.pqDeliveryV2Height() << ")";
+        return false;
+      }
       return checkPqInputs(tx, pmax_used_block_height);
     } else if (tx.txType == TX_FREE_REG) {
       return checkFreeRegInputs(tx, pmax_used_block_height);
@@ -2565,7 +2580,7 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       // TX_PQ inputs carry no amount (value lives in the referenced outputs), so
       // getInputAmount would read 0 and the fee would underflow. Resolve the
       // referenced amounts instead.
-      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && curTx.txType == TX_PQ;
+      const bool pqOnlyInputs = curTx.version >= TRANSACTION_VERSION_1 && isPqTransfer(curTx.txType);
       uint64_t fee = 0;
       if (pqOnlyInputs) {
         if (!getPqTransactionFee(curTx, fee)) {
@@ -2591,7 +2606,8 @@ bool Blockchain::pushBlock(const Block& blockData, const std::vector<Transaction
       // Under a confirmed checkpoint the block hash has already been verified by
       // the network. Skip the expensive per-input validation (key-image domain
       // check, output-key LMDB scans) - pushTransaction still records everything.
-      if (!inCheckpoint && !checkTransactionInputs(block.transactions.back().tx)) {
+      if (!inCheckpoint &&
+          !checkTransactionInputs(block.transactions.back().tx, nullptr, block.height)) {
         logger(INFO, BRIGHT_WHITE) << "Block " << blockHash
           << " has at least one transaction with wrong inputs: " << tx_id;
         bvc.m_verification_failed = true;

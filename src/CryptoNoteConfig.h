@@ -276,6 +276,13 @@ const uint32_t UPGRADE_HEIGHT_V6                             = 4294967294; // re
 const uint32_t UPGRADE_HEIGHT_V7                             = 4294967294; // reserved
 const uint32_t UPGRADE_HEIGHT_V8                             = 4294967294; // reserved
 
+// Height at which the PQ delivery declaration becomes mandatory: at and above
+// it TX_PQ is refused and TX_PQ_V2 required; below it the reverse, so the
+// marker cannot be backdated into pre-fork history. 4294967294 = never, which
+// is what ships until a height is chosen and announced.
+const uint32_t PQ_DELIVERY_V2_HEIGHT                         = 4294967294; // not scheduled
+const uint32_t PQ_DELIVERY_V2_HEIGHT_TESTNET                 = 4294967294; // not scheduled
+
 const unsigned UPGRADE_VOTING_THRESHOLD                      = 90; // percent
 const uint32_t UPGRADE_VOTING_WINDOW                         = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;  // blocks
 const uint32_t UPGRADE_WINDOW                                = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;  // blocks

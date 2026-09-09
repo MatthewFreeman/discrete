@@ -124,8 +124,8 @@ Crypto::KeyImage pqInputNullifierAsKeyImage(const PqInput& in) {
 }
 
 bool checkPqTransactionSemantic(const Transaction& tx, std::string* error) {
-  if (tx.txType != TX_PQ) {
-    return fail(error, "not a TX_PQ subtype");
+  if (!isPqTransfer(tx.txType)) {
+    return fail(error, "not a PQ transfer subtype");
   }
   if (tx.inputs.empty() || tx.outputs.empty()) {
     return fail(error, "TX_PQ with empty inputs or outputs");
@@ -315,6 +315,10 @@ bool checkFreeRegTransactionPow(const Transaction& tx, std::string* error, uint6
 bool checkFreeRegTransactionSemantic(const Transaction& tx, std::string* error, uint64_t powTarget) {
   return checkFreeRegTransactionShape(tx, error) &&
          checkFreeRegTransactionPow(tx, error, powTarget);
+}
+
+uint8_t pqTransferTypeForHeight(uint32_t height, uint32_t deliveryV2Height) {
+  return height >= deliveryV2Height ? TX_PQ_V2 : TX_PQ;
 }
 
 PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId) {

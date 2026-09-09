@@ -2107,7 +2107,7 @@ bool RpcServer::on_check_transaction_proof(
 
   try {
     const Transaction& transaction = transactions.front();
-    if (transaction.txType != TX_PQ) {
+    if (!isPqTransfer(transaction.txType)) {
       res.status = CORE_RPC_STATUS_OK;
       return true;
     }

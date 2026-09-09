@@ -93,7 +93,8 @@ std::string foldedHex(const std::string& summary, const uint8_t* data, size_t si
 const char* txTypeName(uint8_t txType) {
   switch (txType) {
     case TX_COINBASE: return "coinbase";
-    case TX_PQ:       return "transfer";
+    case TX_PQ:
+    case TX_PQ_V2:    return "transfer";
     case TX_FREE_REG: return "account registration";
     default:          return "unknown";
   }
@@ -478,7 +479,7 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     uint64_t totalFees = 0;
     for (const Transaction& tx : blockTxs) {
       uint64_t fee = 0;
-      if (tx.txType == TX_PQ && m_core.getPqTransactionFee(tx, fee)) {
+      if (isPqTransfer(tx.txType) && m_core.getPqTransactionFee(tx, fee)) {
         totalFees += fee;
       }
     }
@@ -517,7 +518,7 @@ bool BuiltinExplorer::on_get_explorer_block_by_hash(const COMMAND_EXPLORER_GET_B
     auto appendTxRow = [&](const Transaction& tx) {
       const std::string hashStr = Common::podToHex(getObjectHash(tx));
       uint64_t fee = 0;
-      const bool paysFee = tx.txType == TX_PQ && m_core.getPqTransactionFee(tx, fee);
+      const bool paysFee = isPqTransfer(tx.txType) && m_core.getPqTransactionFee(tx, fee);
       body += "  <tr>\n";
       body += "    <td><a class=\"wrap\" href=\"/explorer/tx/" + hashStr + "\">" + hashStr + "</a></td>\n";
       body += "    <td>" + std::string(txTypeName(tx.txType)) + "</td>\n";
@@ -612,7 +613,7 @@ bool BuiltinExplorer::on_get_explorer_tx_by_hash(const COMMAND_EXPLORER_GET_TRAN
     body += "  <li>\n";
     body += std::string(isCoinbase ? "    Reward: " : "    Sum of outputs: ") + m_core.currency().formatAmount(transactionsDetails.totalOutputsAmount) + "\n";
     body += "  </li>\n";
-    if (transactionsDetails.txType == TX_PQ) {
+    if (isPqTransfer(transactionsDetails.txType)) {
       body += "  <li>\n";
       body += "    Fee: " + m_core.currency().formatAmount(transactionsDetails.fee) + "\n";
       body += "  </li>\n";

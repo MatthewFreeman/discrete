@@ -107,7 +107,7 @@ PqTransactionBuildResult buildPqTransactionWithProof(
   PqTransactionBuildResult result;
   Transaction& tx = result.tx;
   tx.version = TRANSACTION_VERSION_1;
-  tx.txType = TX_PQ;
+  tx.txType = signing.txType;
   tx.unlockHeight = unlockHeight;
   tx.extra = extra;  // authorized below (set before the signing digest)
 

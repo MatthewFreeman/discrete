@@ -216,7 +216,11 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
       // contradicted the documented "off by default" contract of
       // setLegacyTWindowRescan / walletd's enableLegacyDepositRescan. The window
       // is now exactly what was asked for and nothing more.
-      const uint32_t maxLegacyT = m_legacyTWindowMaxT;
+      // A tx that declares TX_PQ_V2 cannot carry a pre-v2 output: after the
+      // activation height consensus refuses the old declaration, so the
+      // enumeration is dead work even when an operator has switched it on for
+      // the sake of older history.
+      const uint32_t maxLegacyT = tx.txType == TX_PQ_V2 ? 0 : m_legacyTWindowMaxT;
       owned = CryptoPQ::scanPqOutputWithLegacyTWindow(m_scanKeys, ih, so, maxLegacyT);
       if (owned) {
         // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
