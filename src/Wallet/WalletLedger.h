@@ -110,9 +110,9 @@ public:
   void setDepositConfig(PqDepositScheme scheme, uint32_t depositCount);
 
   // MANUAL LEGACY RECOVERY WINDOW — OFF by default (maxT=0), and off means off:
-  // the issued deposit cursor does NOT widen it. SingleKeyIndex scanning is
-  // outContext-v2 only unless maxT > 0, in which case a miss additionally
-  // brute-forces the pre-v2 derivation across T in [0, maxT). Use it to recover
+  // the issued deposit cursor does NOT widen it. SingleKeyIndex always tries
+  // outContext-v2 and legacy T=0; on a miss a nonzero window additionally tries
+  // pre-v2 derivation across T in [1, maxT). Use it to recover
   // an operator-supplied address range after metadata loss; it costs one SHA3 +
   // AEAD per T on every foreign output, so leave it at 0 for normal operation.
   void setLegacyTWindowRescan(uint32_t maxT) { m_legacyTWindowMaxT = maxT; }

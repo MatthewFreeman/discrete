@@ -82,9 +82,10 @@ class WalletLegacy :
   ITransfersObserver {
 
 public:
-  // Legacy pre-outContext-v2 recovery window; 0 (the default) disables the
-  // enumeration entirely. Bounded only so a typo cannot wedge the scanner.
+  // Exclusive upper bound for legacy nonzero-T recovery; 0 disables enumeration.
+  // Current-v2 and legacy T=0 receipts are always recognized.
   static constexpr uint32_t MAX_PQ_LEGACY_SCAN_WINDOW = 65536;
+  static void validatePqLegacyScanWindow(uint32_t window);
 
   WalletLegacy(const CryptoNote::Currency& currency, INode& node, Logging::ILogger& log,
                uint32_t pqLegacyScanWindow = 0);
@@ -103,10 +104,13 @@ public:
   void initWithPqTrackingKeys(const AccountKeys& accountKeys, const PqTrackingKeys& pqTrackingKeys, const std::string& password, const uint32_t scanHeight);
   virtual void shutdown() override;
   virtual void rescan() override;
-  // Set the legacy recovery window and re-examine history with it. Throws
-  // std::system_error(WRONG_PARAMETERS) above MAX_PQ_LEGACY_SCAN_WINDOW.
+  // Configure the next consumer initialization; never changes an active scanner.
+  // Front ends may call this before init. Values above the cap throw
+  // std::system_error(WRONG_PARAMETERS), including in the constructor.
   void setPqLegacyScanWindow(uint32_t window);
-  uint32_t pqLegacyScanWindow() const { return m_pqLegacyScanWindow; }
+  uint32_t pqLegacyScanWindow() const;
+  // Requires an initialized wallet. Rebuild/load errors propagate to the caller;
+  // successful return means initialization succeeded, not that sync is complete.
   void rescanWithPqLegacyScanWindow(uint32_t window);
   virtual void reset() override;
   virtual bool tryLoadWallet(std::istream& source, const std::string& password) override;
@@ -253,7 +257,7 @@ private:
 
   void save(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments);
   void doSave(std::ostream& destination, bool saveDetailed, bool saveCache, bool includeSentPayments);
-  void rebuild(bool preserveSentPayments);
+  void rebuild(bool preserveSentPayments, bool reportErrors = false);
   void doLoad(std::istream& source);
 
   void synchronizationCallback(WalletRequest::Callback callback, std::error_code ec);

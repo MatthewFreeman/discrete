@@ -2616,6 +2616,9 @@ int main(int argc, char* argv[]) {
     }
 
     po::notify(vm);
+    // Validate before any node/wallet setup, while CLI errors are still handled.
+    CryptoNote::WalletLegacy::validatePqLegacyScanWindow(
+        command_line::get_arg(vm, arg_legacy_scan_window));
     return true;
   });
 
