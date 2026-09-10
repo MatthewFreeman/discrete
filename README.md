@@ -54,13 +54,13 @@ and restart traversal if either changes.
 
 For an otherwise valid request through a trusted resolver, an unregistered account
 has deliberately different results in the two listing RPCs. The legacy
-`listDepositAddresses` (`WalletService::listPqDepositAddresses`) returns success
-with an empty list for compatibility. `listDepositAddressesPage` returns
-`ACCOUNT_NUMBER_UNCONFIRMED`: it cannot confirm the requested account identity,
-so a client must not interpret that result as an empty registry. Confirm the
-registration and retry. Once registered, a matching request at `offset ==
-expectedDepositCount` succeeds with an empty page. Other resolver failures retain
-their existing error responses.
+`listDepositAddresses` returns success with an empty list for compatibility.
+`listDepositAddressesPage` returns `ACCOUNT_NOT_REGISTERED`, the same error
+`createDepositAddress` gives before registration: it cannot confirm the requested
+account identity, so a client must not interpret that result as an empty registry.
+Register the account (`registerAccount`), wait for it to confirm, and retry. Once
+registered, a matching request at `offset == expectedDepositCount` succeeds with
+an empty page. Other resolver failures retain their existing error responses.
 
 ### Account numbers and daemon trust
 

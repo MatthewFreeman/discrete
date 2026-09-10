@@ -1726,16 +1726,26 @@ std::error_code WalletService::listPqDepositAddressesPage(const ListPqDepositAdd
       return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
     }
     auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
-    if (gw == nullptr || !gw->pqEnabled() || gw->getPqDepositScheme() != CryptoNote::PqDepositScheme::SingleKeyIndex) {
+    if (gw == nullptr || !gw->pqEnabled()) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    // Only SingleKeyIndex has an issued registry to page through.
+    if (gw->getPqDepositScheme() != CryptoNote::PqDepositScheme::SingleKeyIndex) {
       return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
     }
     bool registered = false;
     uint32_t regH = 0, regI = 0;
     const auto rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
-    if (rc) return rc;
+    if (rc) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "Refusing to list deposit address page: " << rc.message();
+      return rc;
+    }
     // Unlike the legacy full-list RPC's successful empty result, a conditional
-    // page must fail closed until its account identity can be confirmed.
-    if (!registered) return make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED);
+    // page must fail closed until its account identity can be confirmed. This is
+    // the same answer createDepositAddress gives before registration, so a
+    // paging client cannot mistake it for an empty registry.
+    if (!registered) return make_error_code(CryptoNote::error::ACCOUNT_NOT_REGISTERED);
     const std::string account = CryptoNote::AccountNumber{regH, regI}.toString(gw->pqAccountFingerprint());
     const uint32_t count = gw->getPqDepositCount();
     if (account != request.expectedAccountNumber || count != request.expectedDepositCount || request.offset > count) {

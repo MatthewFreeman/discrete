@@ -769,7 +769,7 @@ TEST_F(PaymentGateTest, PagedDepositListingDistinguishesUnregisteredFromEmptyTai
   request.limit = 1;
   request.expectedAccountNumber = "not-yet-registered";
   ListPqDepositAddressesPage::Response response;
-  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED),
+  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NOT_REGISTERED),
             service->listPqDepositAddressesPage(request, response));
   std::vector<std::string> addresses;
   std::vector<uint32_t> indices;
@@ -862,7 +862,7 @@ TEST_F(PaymentGateTest, PagedDepositListingLogsExceptionsAndPreservesErrors) {
   // Each catch must release the service lock and leave issued addresses alone.
   throwingNode.failure = ThrowingRegistrationNode::None;
   output.str("");
-  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NUMBER_UNCONFIRMED),
+  EXPECT_EQ(make_error_code(CryptoNote::error::ACCOUNT_NOT_REGISTERED),
             service.listPqDepositAddressesPage(request, response));
   EXPECT_TRUE(output.str().empty());
   EXPECT_EQ(0u, testWallet.getPqDepositCount());
