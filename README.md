@@ -45,6 +45,23 @@ For exchange and service wallet operation, including the two `walletd` deposit
 modes and the recommended H-I-A-T-C workflow, see the
 [walletd exchange integration guide](https://docs.discrete.cash/#/wallets/walletd-exchange-guide).
 
+### Conditional deposit registry pages
+
+`listDepositAddressesPage` lists issued SingleKeyIndex deposits in pages of 1..256
+entries. Supply `offset`, `limit`, `expectedAccountNumber`, and
+`expectedDepositCount`; keep the expected identity and count fixed across pages
+and restart traversal if either changes.
+
+For an otherwise valid request through a trusted resolver, an unregistered account
+has deliberately different results in the two listing RPCs. The legacy
+`listDepositAddresses` returns success with an empty list for compatibility.
+`listDepositAddressesPage` returns `ACCOUNT_NOT_REGISTERED`, the same error
+`createDepositAddress` gives before registration: it cannot confirm the requested
+account identity, so a client must not interpret that result as an empty registry.
+Register the account (`registerAccount`), wait for it to confirm, and retry. Once
+registered, a matching request at `offset == expectedDepositCount` succeeds with
+an empty page. Other resolver failures retain their existing error responses.
+
 ### Account numbers and daemon trust
 
 An account number (`H-I-A-C`, or `H-I-A-T-C` for a deposit subaddress) is a short

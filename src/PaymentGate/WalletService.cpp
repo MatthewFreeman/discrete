@@ -1718,6 +1718,62 @@ std::error_code WalletService::listPqDepositAddresses(std::vector<std::string>& 
   return std::error_code();
 }
 
+std::error_code WalletService::listPqDepositAddressesPage(const ListPqDepositAddressesPage::Request& request,
+                                                        ListPqDepositAddressesPage::Response& response) {
+  try {
+    System::EventLock lk(readyEvent);
+    if (request.limit == 0 || request.limit > 256 || request.expectedAccountNumber.empty() || request.expectedAccountNumber.size() > 64) {
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+    auto* gw = dynamic_cast<CryptoNote::WalletGreen*>(&wallet);
+    if (gw == nullptr || !gw->pqEnabled()) {
+      return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+    }
+    // Only SingleKeyIndex has an issued registry to page through.
+    if (gw->getPqDepositScheme() != CryptoNote::PqDepositScheme::SingleKeyIndex) {
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+    bool registered = false;
+    uint32_t regH = 0, regI = 0;
+    const auto rc = resolveOwnPqRegistration(node, *gw, registered, regH, regI);
+    if (rc) {
+      logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+          << "Refusing to list deposit address page: " << rc.message();
+      return rc;
+    }
+    // Unlike the legacy full-list RPC's successful empty result, a conditional
+    // page must fail closed until its account identity can be confirmed. This is
+    // the same answer createDepositAddress gives before registration, so a
+    // paging client cannot mistake it for an empty registry.
+    if (!registered) return make_error_code(CryptoNote::error::ACCOUNT_NOT_REGISTERED);
+    const std::string account = CryptoNote::AccountNumber{regH, regI}.toString(gw->pqAccountFingerprint());
+    const uint32_t count = gw->getPqDepositCount();
+    if (account != request.expectedAccountNumber || count != request.expectedDepositCount || request.offset > count) {
+      return make_error_code(CryptoNote::error::WRONG_PARAMETERS);
+    }
+    response.scheme = depositSchemeName(gw->getPqDepositScheme());
+    response.tracking = gw->isTracking();
+    response.accountNumber = account;
+    response.depositCount = count;
+    response.offset = request.offset;
+    response.addresses.clear();
+    response.indices.clear();
+    const uint32_t length = std::min(request.limit, count - request.offset);
+    for (uint32_t i = 0; i < length; ++i) {
+      const uint32_t index = gw->getPqDepositIndexAt(request.offset + i);
+      response.addresses.push_back(gw->pqDepositAddress(index, regH, regI));
+      response.indices.push_back(index);
+    }
+  } catch (std::system_error& error) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit address page: " << error.what();
+    return error.code();
+  } catch (std::exception& error) {
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while listing deposit address page: " << error.what();
+    return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
+  }
+  return std::error_code();
+}
+
 std::error_code WalletService::sendTransaction(const SendTransaction::Request& request, std::string& transactionHash,
                                                std::vector<std::string>& paymentProofs) {
   std::string ignoredTransactionHex;

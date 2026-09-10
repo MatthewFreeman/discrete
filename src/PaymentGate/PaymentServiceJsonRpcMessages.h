@@ -389,6 +389,28 @@ struct ListPqDepositAddresses {
   };
 };
 
+// Bounded SingleKeyIndex registry traversal. Each page is conditional on the
+// same registered account and issued count; no container state is modified.
+struct ListPqDepositAddressesPage {
+  struct Request {
+    uint32_t offset = 0;
+    uint32_t limit = 0;
+    std::string expectedAccountNumber;
+    uint32_t expectedDepositCount = 0;
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+  struct Response {
+    std::string scheme;
+    bool tracking = false;
+    std::string accountNumber;
+    uint32_t depositCount = 0;
+    uint32_t offset = 0;
+    std::vector<std::string> addresses;
+    std::vector<uint32_t> indices;
+    void serialize(CryptoNote::ISerializer& serializer);
+  };
+};
+
 // MANUAL RECOVERY KNOB (SingleKeyIndex only) — OFF by default. outContext-v2
 // scanning is O(1) per output regardless of how many deposit indices were
 // issued, but consensus never validated the old per-output context either,
