@@ -28,6 +28,12 @@
 namespace CryptoNote {
 namespace {
 
+const command_line::arg_descriptor<std::string> arg_transport = { "p2p-transport", "P2P transport: off, mixed, pq-required", "off" };
+const command_line::arg_descriptor<std::string> arg_pq_key = { "p2p-pq-key", "Independent network-bound P2P key file", "" };
+const command_line::arg_descriptor<std::string> arg_pq_name = { "p2p-pq-name", "Canonical service name bound to the P2P key", "" };
+const command_line::arg_descriptor<std::vector<std::string>> arg_pq_pin = { "p2p-pq-pin", "Require IPv4:port,service-name,sha256-SPKI on every dial path" };
+const command_line::arg_descriptor<std::vector<std::string>> arg_pq_peer = { "p2p-pq-peer", "Require PQ transport for a numeric IPv4:port; no legacy fallback" };
+
 bool parsePeerFromString(NetworkAddress& pe, const std::string& node_addr) {
   return Common::parseIpAddressAndPort(pe.ip, pe.port, node_addr);
 }
@@ -62,6 +68,11 @@ void NetNodeConfig::initOptions(boost::program_options::options_description& des
   command_line::add_arg(desc, arg_ban_list);
   command_line::add_arg(desc, arg_p2p_hide_my_port);
   command_line::add_arg(desc, arg_connections_count);
+  command_line::add_arg(desc, arg_transport);
+  command_line::add_arg(desc, arg_pq_key);
+  command_line::add_arg(desc, arg_pq_name);
+  command_line::add_arg(desc, arg_pq_pin);
+  command_line::add_arg(desc, arg_pq_peer);
 }
 
 NetNodeConfig::NetNodeConfig() {
@@ -77,6 +88,18 @@ NetNodeConfig::NetNodeConfig() {
 
 bool NetNodeConfig::init(const boost::program_options::variables_map& vm)
 {
+  if (vm.count(arg_transport.name)) transportConfig.mode = P2pTransportConfig::parseMode(command_line::get_arg(vm, arg_transport));
+  if (vm.count(arg_pq_key.name)) transportConfig.keyFile = command_line::get_arg(vm, arg_pq_key);
+  if (vm.count(arg_pq_name.name)) transportConfig.name = command_line::get_arg(vm, arg_pq_name);
+  if (command_line::has_arg(vm, arg_pq_pin)) {
+    for (const auto& value : command_line::get_arg(vm, arg_pq_pin)) {
+      std::string endpoint;
+      auto pin = P2pTransportConfig::parsePin(value, endpoint);
+      if (!transportConfig.pins.emplace(endpoint, std::move(pin)).second) throw std::invalid_argument("Duplicate P2P pin endpoint");
+    }
+  }
+  if (command_line::has_arg(vm, arg_pq_peer)) transportConfig.requiredPeers = command_line::get_arg(vm, arg_pq_peer);
+  transportConfig.validate();
   if (vm.count(arg_p2p_bind_ip.name) != 0 && (!vm[arg_p2p_bind_ip.name].defaulted() || bindIp.empty())) {
     bindIp = command_line::get_arg(vm, arg_p2p_bind_ip);
   }

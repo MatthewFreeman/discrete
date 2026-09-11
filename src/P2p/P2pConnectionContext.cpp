@@ -39,10 +39,10 @@ namespace CryptoNote {
 
   void P2pConnectionContext::interrupt() {
     logger(Logging::DEBUGGING) << *this << "Interrupt connection";
-    assert(context != nullptr);
     stopped = true;
     queueEvent.set();
-    context->interrupt();
+    connection.close();
+    if (context != nullptr) context->interrupt();
   }
 
 }  // namespace CryptoNote

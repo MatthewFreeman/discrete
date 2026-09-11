@@ -17,6 +17,7 @@
 
 #include "LevinProtocol.h"
 #include <System/TcpConnection.h>
+#include "P2pTransport.h"
 
 using namespace CryptoNote;
 
@@ -49,7 +50,10 @@ bool LevinProtocol::Command::needReply() const {
 }
 
 LevinProtocol::LevinProtocol(System::TcpConnection& connection) 
-  : m_conn(connection) {}
+  : m_conn(&connection) {}
+
+LevinProtocol::LevinProtocol(P2pTransport& connection)
+  : m_transport(&connection) {}
 
 void LevinProtocol::sendMessage(uint32_t command, const BinaryArray& out, bool needResponse) {
   bucket_head2 head = { 0 };
@@ -126,14 +130,16 @@ void LevinProtocol::sendReply(uint32_t command, const BinaryArray& out, int32_t 
 void LevinProtocol::writeStrict(const uint8_t* ptr, size_t size) {
   size_t offset = 0;
   while (offset < size) {
-    offset += m_conn.write(ptr + offset, size - offset);
+    const size_t written = m_transport ? m_transport->write(ptr + offset, size - offset) : m_conn->write(ptr + offset, size - offset);
+    if (written == 0) throw std::runtime_error("Levin write made no progress");
+    offset += written;
   }
 }
 
 bool LevinProtocol::readStrict(uint8_t* ptr, size_t size) {
   size_t offset = 0;
   while (offset < size) {
-    size_t read = m_conn.read(ptr + offset, size - offset);
+    size_t read = m_transport ? m_transport->read(ptr + offset, size - offset) : m_conn->read(ptr + offset, size - offset);
     if (read == 0) {
       return false;
     }

@@ -130,6 +130,7 @@ namespace CryptoNote
     bool is_remote_host_allowed(const uint32_t address_ip);
     bool is_addr_recently_failed(const uint32_t address_ip);
     bool handleConfig(const NetNodeConfig& config);
+    P2pTransport connectTransport(const NetworkAddress& address, bool inheritedPq = false);
     bool append_net_address(std::vector<NetworkAddress>& nodes, const std::string& addr);
     bool handle_remote_peerlist(const std::vector<PeerlistEntry>& peerlist, time_t local_time, const CryptoNoteConnectionContext& context);
     bool get_local_node_data(basic_node_data& node_data) const;
@@ -221,6 +222,7 @@ namespace CryptoNote
     std::vector<NetworkAddress> m_seed_nodes;
     std::vector<PeerlistEntry> m_command_line_peers;
     boost::uuids::uuid m_network_id = CRYPTONOTE_NETWORK;
+    std::unique_ptr<P2pTransportContext> m_transport;
     std::map<uint32_t, time_t> m_blocked_hosts;
     std::map<uint32_t, uint64_t> m_host_fails_score;
   };

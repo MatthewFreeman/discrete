@@ -25,6 +25,7 @@
 #include "P2pProtocolTypes.h"
 #include "Common/CommandLine.h"
 #include "CryptoNoteConfig.h"
+#include "P2pTransport.h"
 
 namespace CryptoNote {
 
@@ -62,6 +63,8 @@ public:
   bool getHideMyPort() const;
   std::string getConfigFolder() const;
   uint32_t getConnectionsCount() const;
+  const P2pTransportConfig& getTransportConfig() const { return transportConfig; }
+  void setTransportConfig(P2pTransportConfig value) { value.validate(); transportConfig = std::move(value); }
 
   void setP2pStateFilename(const std::string& filename);
   void setTestnet(bool isTestnet);
@@ -94,6 +97,7 @@ private:
   std::string p2pStateFilename;
   bool testnet;
   uint32_t connectionsCount;
+  P2pTransportConfig transportConfig;
 };
 
 } //namespace nodetool

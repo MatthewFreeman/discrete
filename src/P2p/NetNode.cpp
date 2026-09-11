@@ -489,6 +489,18 @@ namespace CryptoNote
       m_network_id.data[0] += 1;
     }
 
+    try {
+      m_transport.reset(new P2pTransportContext(config.getTransportConfig(), m_network_id));
+    } catch (const std::exception& e) {
+      logger(ERROR, BRIGHT_RED) << "P2P transport configuration failed: " << e.what();
+      return false;
+    }
+    const auto transportMode = m_transport->config().mode;
+    logger(INFO) << "P2P transport: " << (transportMode == P2pTransportMode::Off ? "off (plaintext)" :
+      transportMode == P2pTransportMode::Mixed ? "mixed (legacy fallback explicitly allowed)" : "pq-required (no plaintext fallback)");
+    if (transportMode != P2pTransportMode::Off)
+      logger(INFO) << "P2P network identity SHA256-SPKI: " << m_transport->publicKeyFingerprint();
+
     if (!handleConfig(config)) { 
       logger(ERROR, BRIGHT_RED) << "Failed to handle command line"; 
       return false; 
@@ -788,33 +800,65 @@ namespace CryptoNote
 
   //-----------------------------------------------------------------------------------
 
+  P2pTransport NodeServer::connectTransport(const NetworkAddress& na, bool inheritedPq) {
+    if (!na.port || na.port > 65535) throw std::runtime_error("Invalid P2P destination port");
+    const auto endpoint = P2pTransportConfig::endpoint(Common::ipAddressToString(na.ip), static_cast<uint16_t>(na.port));
+    const auto& policy = m_transport->config();
+    const bool enabled = policy.mode != P2pTransportMode::Off;
+    if (enabled && !is_remote_host_allowed(na.ip)) throw std::runtime_error("P2P destination is blocked");
+    if (enabled && !m_transport->admit(na.ip, false)) throw std::runtime_error("P2P outgoing handshake capacity reached");
+    struct Admission {
+      P2pTransportContext* transport;
+      uint32_t ip;
+      ~Admission() { if (transport) transport->release(ip, false); }
+    } admission{enabled ? m_transport.get() : nullptr, na.ip};
+
+    const auto attempt = [&](bool secure) -> P2pTransport {
+      bool timedOut = false;
+      // Context<T> uses placement storage without destroying T. Keep ownership
+      // outside that storage so cancellation and exceptional exits release TLS.
+      std::unique_ptr<P2pTransport> result;
+      System::Context<> operation(m_dispatcher, [&, secure] {
+        System::TcpConnector connector(m_dispatcher);
+        result.reset(new P2pTransport(m_dispatcher, connector.connect(System::Ipv4Address(Common::ipAddressToString(na.ip)), static_cast<uint16_t>(na.port))));
+        if (secure) result->startClient(*m_transport, endpoint);
+        else result->startLegacy();
+      });
+      System::Context<> timeout(m_dispatcher, [&, secure] {
+        System::Timer(m_dispatcher).sleep(std::chrono::milliseconds(m_config.m_net_config.connection_timeout +
+          (secure ? P2pTransportContext::HANDSHAKE_TIMEOUT_MS : 0)));
+        timedOut = true;
+        operation.interrupt();
+      });
+      try {
+        operation.get();
+        return std::move(*result);
+      } catch (const System::InterruptedException&) {
+        if (timedOut && !m_stop) throw std::runtime_error("P2P transport connection timed out");
+        throw;
+      }
+    };
+    if (!enabled) return attempt(false);
+    try {
+      auto result = attempt(true);
+      logger(DEBUGGING) << "P2P transport ready for " << endpoint << ": pq-encrypted / " << (result.pinned() ? "pinned" : "unpinned");
+      return result;
+    } catch (const System::InterruptedException&) { throw; }
+    catch (const std::exception&) {
+      if (m_stop || !policy.permitsFallback(endpoint, inheritedPq)) throw;
+      // A new socket, before any application handshake or application write.
+      logger(INFO) << "P2P mixed policy permits a plaintext retry to " << endpoint;
+      return attempt(false);
+    }
+  }
+
   bool NodeServer::try_to_connect_and_handshake_with_new_peer(const NetworkAddress& na, bool just_take_peerlist, uint64_t last_seen_stamp, PeerType peer_type, uint64_t first_seen_stamp)  {
 
     logger(DEBUGGING) << "Connecting to " << na << " (peer_type=" << peer_type << ", last_seen: "
         << (last_seen_stamp ? Common::timeIntervalToString(time(nullptr) - last_seen_stamp) : "never") << ")...";
 
     try {
-      System::TcpConnection connection;
-
-      try {
-        System::Context<System::TcpConnection> connectionContext(m_dispatcher, [this, &na] {
-          System::TcpConnector connector(m_dispatcher);
-          return connector.connect(System::Ipv4Address(Common::ipAddressToString(na.ip)), static_cast<uint16_t>(na.port));
-        });
-
-        System::Context<> timeoutContext(m_dispatcher, [this, &na, &connectionContext] {
-          System::Timer(m_dispatcher).sleep(std::chrono::milliseconds(m_config.m_net_config.connection_timeout));
-          connectionContext.interrupt();
-          logger(DEBUGGING) << "Connection to " << na <<" timed out, interrupting it";
-        });
-
-        connection = std::move(connectionContext.get());
-      } catch (const System::InterruptedException&) {
-        logger(DEBUGGING) << "Connection timed out";
-        return false;
-      }
-
-      P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), std::move(connection));
+      P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), connectTransport(na));
 
       ctx.m_connection_id = boost::uuids::random_generator()();
       ctx.m_remote_ip = na.ip;
@@ -1191,9 +1235,8 @@ namespace CryptoNote
     try {
       COMMAND_PING::request req;
       COMMAND_PING::response rsp;
-      System::Context<> pingContext(m_dispatcher, [this, &ip, &port, &req, &rsp] {
-        System::TcpConnector connector(m_dispatcher);
-        auto connection = connector.connect(System::Ipv4Address(ip), static_cast<uint16_t>(port));
+      System::Context<> pingContext(m_dispatcher, [this, actual_ip, &port, &req, &rsp, &context] {
+        auto connection = connectTransport(NetworkAddress{actual_ip, port}, context.connection.secure());
         LevinProtocol(connection).invoke(COMMAND_PING::ID, req, rsp);
       });
 
@@ -1460,6 +1503,8 @@ namespace CryptoNote
 
   void NodeServer::acceptLoop() {
     while(!m_stop) {
+      bool admissionHeld = false;
+      uint32_t admissionIp = 0;
       try {
         P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), m_listener.accept());
         ctx.m_connection_id = boost::uuids::random_generator()();
@@ -1470,15 +1515,31 @@ namespace CryptoNote
         ctx.m_remote_ip = hostToNetwork(addressAndPort.first.getValue());
         ctx.m_remote_port = addressAndPort.second;
 
-        auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+        if (m_transport->config().mode != P2pTransportMode::Off) {
+          if (!is_remote_host_allowed(ctx.m_remote_ip) || !m_transport->admit(ctx.m_remote_ip, true)) continue;
+          admissionIp = ctx.m_remote_ip;
+          admissionHeld = ctx.transportAdmission = true;
+        }
+
+        const auto insertion = m_connections.emplace(ctx.m_connection_id, std::move(ctx));
+        if (!insertion.second) throw std::runtime_error("Duplicate P2P connection identifier");
+        auto iter = insertion.first;
         const boost::uuids::uuid& connectionId = iter->first;
         P2pConnectionContext& connection = iter->second;
 
-        m_workingContextGroup.spawn(std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connection)));
+        try {
+          m_workingContextGroup.spawn(std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connection)));
+        } catch (...) {
+          m_connections.erase(iter);
+          throw;
+        }
+        admissionHeld = false;
       } catch (const System::InterruptedException&) {
+        if (admissionHeld) m_transport->release(admissionIp, true);
         logger(DEBUGGING) << "acceptLoop() is interrupted";
         break;
       } catch (const std::exception& e) {
+        if (admissionHeld) m_transport->release(admissionIp, true);
         logger(TRACE) << "Exception in acceptLoop: " << e.what();
       }
     }
@@ -1569,10 +1630,23 @@ namespace CryptoNote
   void NodeServer::connectionHandler(const boost::uuids::uuid& connectionId, P2pConnectionContext& ctx) {
     // This inner context is necessary in order to stop connection handler at any moment
     System::Context<> context(m_dispatcher, [this, &connectionId, &ctx] {
-      System::Context<> writeContext(m_dispatcher, std::bind(&NodeServer::writeHandler, this, std::ref(ctx)));
+      std::unique_ptr<System::Context<>> writeContext;
+      std::unique_ptr<System::Context<>> initialDeadline;
+      bool opened = false;
 
       try {
+        if (ctx.m_is_income) ctx.connection.startServer(*m_transport);
+        if (ctx.transportAdmission) {
+          initialDeadline.reset(new System::Context<>(m_dispatcher, [this, &ctx] {
+            System::Timer(m_dispatcher).sleep(std::chrono::milliseconds(m_config.m_net_config.connection_timeout * 3));
+            if (ctx.peerId == 0) ctx.interrupt();
+          }));
+        }
+        logger(DEBUGGING) << ctx << "P2P stream ready: " << (!ctx.connection.secure() ? "plaintext" :
+          ctx.m_is_income ? "pq-encrypted / anonymous incoming client" : ctx.connection.pinned() ? "pq-encrypted / pinned server" : "pq-encrypted / unpinned server");
+        writeContext.reset(new System::Context<>(m_dispatcher, std::bind(&NodeServer::writeHandler, this, std::ref(ctx))));
         on_connection_new(ctx);
+        opened = true;
 
         LevinProtocol proto(ctx.connection);
         LevinProtocol::Command cmd;
@@ -1593,6 +1667,11 @@ namespace CryptoNote
           BinaryArray response;
           bool handled = false;
           auto retcode = handleCommand(cmd, response, ctx, handled);
+          if (ctx.transportAdmission && ctx.peerId != 0) {
+            m_transport->release(ctx.m_remote_ip, true);
+            ctx.transportAdmission = false;
+            initialDeadline.reset();
+          }
 
           // send response
           if (cmd.needReply()) {
@@ -1615,10 +1694,11 @@ namespace CryptoNote
       }
 
       ctx.interrupt();
-      writeContext.interrupt();
-      writeContext.get();
+      initialDeadline.reset();
+      if (ctx.transportAdmission) m_transport->release(ctx.m_remote_ip, true);
+      if (writeContext) { writeContext->interrupt(); writeContext->get(); }
 
-      on_connection_close(ctx);
+      if (opened) on_connection_close(ctx);
       m_connections.erase(connectionId);
     });
 

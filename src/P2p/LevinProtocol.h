@@ -29,6 +29,8 @@ class TcpConnection;
 
 namespace CryptoNote {
 
+class P2pTransport;
+
 enum class LevinError: int32_t {
   OK = 0,
   ERROR_CONNECTION = -1,
@@ -46,15 +48,14 @@ class LevinProtocol {
 public:
 
   LevinProtocol(System::TcpConnection& connection);
+  LevinProtocol(P2pTransport& connection);
 
   template <typename Request, typename Response>
   bool invoke(uint32_t command, const Request& request, Response& response) {
     sendMessage(command, encode(request), true);
 
     Command cmd;
-    readCommand(cmd);
-
-    if (!cmd.isResponse) {
+    if (!readCommand(cmd) || !cmd.isResponse) {
       return false;
     }
 
@@ -107,7 +108,8 @@ private:
 
   bool readStrict(uint8_t* ptr, size_t size);
   void writeStrict(const uint8_t* ptr, size_t size);
-  System::TcpConnection& m_conn;
+  System::TcpConnection* m_conn = nullptr;
+  P2pTransport* m_transport = nullptr;
 };
 
 }

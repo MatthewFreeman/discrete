@@ -2,6 +2,17 @@ add_definitions(-DSTATICLIB)
 
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} ../version)
 
+add_executable(P2pTransportTests test_p2p_transport.cpp)
+target_link_libraries(P2pTransportTests P2P System Logging Serialization Common Crypto gtest_main ${Boost_LIBRARIES})
+add_test(NAME P2pTransportTests COMMAND P2pTransportTests)
+set_tests_properties(P2pTransportTests PROPERTIES TIMEOUT 90)
+
+add_executable(P2pTransportNodeTests test_p2p_transport_nodes.cpp)
+target_link_libraries(P2pTransportNodeTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto upnpc-static ${Boost_LIBRARIES})
+
+add_executable(P2pTransportBench benchmark_p2p_transport.cpp)
+target_link_libraries(P2pTransportBench P2P System ${Boost_LIBRARIES})
+
 # Classical-consensus test suites (CoreTests, TransfersTests, PerformanceTests) were
 # removed, along with DifficultyTests (stale classical difficulty vectors) and
 # LMDBReorgTests (classical chaingen, hangs on the PQ chain): they exercise classical
