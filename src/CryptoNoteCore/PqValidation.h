@@ -24,6 +24,7 @@
 
 #include "CryptoNote.h"
 #include "CryptoTypes.h"
+#include "PqTxType.h"
 #include "../CryptoNoteConfig.h"
 #include "crypto_pq/PqDerive.h"
 #include "crypto_pq/PqHash.h"
@@ -120,6 +121,11 @@ uint64_t grindFreeRegPow(const std::array<uint8_t, 1184>& viewPub,
 struct PqSigningContext {
   bool useV2 = false;
   CryptoPQ::Hash256 chainId{};  // genesis block id; only read when useV2
+  // Declared transfer subtype. It belongs here rather than as a separate builder
+  // argument because txType is INSIDE the §8.1 signing digest: the declaration is
+  // part of what the inputs authorize, so it cannot be altered after signing.
+  // TX_PQ until the delivery-v2 activation height; see pqTransferTypeForHeight.
+  uint8_t txType = TX_PQ;
 };
 
 // The signing context for a transaction being validated at `height` on the chain
@@ -131,6 +137,12 @@ struct PqSigningContext {
 // index, i.e. the chain height. Both overloads exist because the chain holds the
 // genesis id as a Crypto::Hash and wallets carry it as a CryptoPQ::Hash256; they
 // share one activation comparison so the two sides cannot drift apart.
+// Which transfer subtype a sender must declare for a tx aimed at `height`.
+// Consensus tests the same boundary through Currency::isPqTransferTypeAllowedAt;
+// both take the activation height from the Currency, so there is no second copy
+// of the schedule to fall out of step.
+uint8_t pqTransferTypeForHeight(uint32_t height, uint32_t deliveryV2Height);
+
 PqSigningContext pqSigningContextForHeight(uint32_t height, const Crypto::Hash& genesisId);
 PqSigningContext pqSigningContextForHeight(uint32_t height, const CryptoPQ::Hash256& genesisId);
 

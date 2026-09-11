@@ -176,6 +176,8 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
   // 2. Output recognition. inputsHash seeds every output's out_context; the
   //    wallet-side helper derives it from the tx's PqInputs.
   CryptoPQ::Hash256 ih = pqTransactionInputsHash(tx);
+  const auto scanMode = tx.txType == TX_PQ_V2
+      ? CryptoPQ::PqScanMode::StrictV2 : CryptoPQ::PqScanMode::Compatible;
   for (uint32_t i = 0; i < tx.outputs.size(); ++i) {
     const TransactionOutput& out = tx.outputs[i];
     if (out.target.type() != typeid(PqOutput)) {
@@ -216,8 +218,10 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
       // contradicted the documented "off by default" contract of
       // setLegacyTWindowRescan / walletd's enableLegacyDepositRescan. The window
       // is now exactly what was asked for and nothing more.
-      const uint32_t maxLegacyT = m_legacyTWindowMaxT;
-      owned = CryptoPQ::scanPqOutputWithLegacyTWindow(m_scanKeys, ih, so, maxLegacyT);
+      // The declaration selects strict-v2 interpretation, not a public proof
+      // of correct encryption. StrictV2 ignores all legacy recovery attempts.
+      owned = CryptoPQ::scanPqOutputWithLegacyTWindow(
+          m_scanKeys, ih, so, m_legacyTWindowMaxT, scanMode);
       if (owned) {
         // T=0 IS the primary address, never a deposit: a plain Bech32m PQ address
         // and a base H-I-A-C account number both send at T=0, so an output there
@@ -234,12 +238,12 @@ bool WalletLedger::processTransaction(const TransactionPrefix& tx, const Crypto:
     } else {
       // AggregatedMultikey: the wallet's own primary address (T=0), then the
       // shared-view-key deposit family routed by deposit spend key.
-      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so);
+      owned = CryptoPQ::scanPqOutput(m_scanKeys, ih, so, scanMode);
       if (!owned && m_depositCount > 0) {
         ensureDepositKeys(m_depositCount);
         auto agg = m_depositSpendPubs.empty()
             ? std::optional<CryptoPQ::PqAggregateOwned>{}
-            : CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so);
+            : CryptoPQ::scanPqOutputAggregate(m_scanKeys.viewSk, m_depositSpendPubs, ih, so, scanMode);
         if (agg) {
           owned = agg->record;
           depositIndex = static_cast<uint32_t>(agg->spendPubIndex);

@@ -26,6 +26,7 @@
 #include "../crypto/hash.h"
 #include "../Logging/LoggerRef.h"
 #include "CryptoNoteBasic.h"
+#include "PqTxType.h"
 #include "Difficulty.h"
 #include "crypto_pq/PqKem.h"
 #include "crypto_pq/PqDsa.h"
@@ -119,6 +120,15 @@ public:
   size_t freeRegPoolLimit() const { return m_freeRegPoolLimit; }
 
   bool isTestnet() const { return m_testnet; }
+
+  // Activation height of the mandatory outContext-v2 delivery declaration.
+  uint32_t pqDeliveryV2Height() const { return m_pqDeliveryV2Height; }
+  // Which transfer subtype a transaction in a block at `height` must declare.
+  bool isPqTransferTypeAllowedAt(uint8_t txType, uint32_t height) const {
+    if (txType == TX_PQ)    return height <  m_pqDeliveryV2Height;
+    if (txType == TX_PQ_V2) return height >= m_pqDeliveryV2Height;
+    return false;
+  }
 
   const Block& genesisBlock() const { return m_genesisBlock; }
   const Crypto::Hash& genesisBlockHash() const { return m_genesisBlockHash; }
@@ -222,6 +232,7 @@ private:
   size_t m_freeRegPoolLimit;
 
   bool m_testnet;
+  uint32_t m_pqDeliveryV2Height;
 
   Block m_genesisBlock;
   Crypto::Hash m_genesisBlockHash;
@@ -306,6 +317,8 @@ public:
   CurrencyBuilder& freeRegPerBlock(size_t val) { m_currency.m_freeRegPerBlock = val; return *this; }
   CurrencyBuilder& freeRegPowTarget(uint64_t val) { m_currency.m_freeRegPowTarget = val; return *this; }
   CurrencyBuilder& freeRegPoolLimit(size_t val) { m_currency.m_freeRegPoolLimit = val; return *this; }
+
+  CurrencyBuilder& pqDeliveryV2Height(uint32_t val) { m_currency.m_pqDeliveryV2Height = val; return *this; }
 
   CurrencyBuilder& testnet(bool val) { m_currency.m_testnet = val; return *this; }
 

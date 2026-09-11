@@ -13,6 +13,8 @@
 #include "CryptoNoteConfig.h"
 #include "PqTxType.h"
 #include "CryptoNoteCore/PqValidation.h"
+#include "CryptoNoteCore/Currency.h"
+#include "Logging/ConsoleLogger.h"
 #include "CryptoNoteCore/TransactionExtra.h"
 
 #include "crypto_pq/PqOutputBuilder.h"
@@ -468,4 +470,94 @@ TEST(PqValidation, FreeRegRejectsBadPow) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// ---------------------------------------------------------------------------
+// Delivery-version declaration (TX_PQ -> TX_PQ_V2 hard fork).
+//
+// The pre-v2 and v2 out_context derivations produce byte-identical outputs, so a
+// validator cannot tell them apart by inspection. The subtype is the sender's
+// declaration, and the fork makes it binding by refusing the old one. These tests
+// pin the boundary and — more importantly — pin that the sender-side helper and
+// the consensus predicate agree, because two copies of an activation comparison
+// drifting apart is how a chain splits.
+// ---------------------------------------------------------------------------
+
+TEST(PqDeliveryVersion, ConsensusRefusesTheWrongDeclarationOnEachSideOfTheFork) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    const uint32_t H = 5000;
+    const Currency currency = CurrencyBuilder(logger).pqDeliveryV2Height(H).currency();
+
+    // Below the fork only the old declaration is admissible, so the marker cannot
+    // be backdated into pre-fork history.
+    EXPECT_TRUE (currency.isPqTransferTypeAllowedAt(TX_PQ,    H - 1));
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_PQ_V2, H - 1));
+    EXPECT_TRUE (currency.isPqTransferTypeAllowedAt(TX_PQ,    0));
+
+    // At and above it the old declaration is refused outright: an unupgraded
+    // sender fails loudly instead of paying into an output whose recipient may
+    // never derive the right context.
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_PQ,    H));
+    EXPECT_TRUE (currency.isPqTransferTypeAllowedAt(TX_PQ_V2, H));
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_PQ,    H + 1000));
+
+    // Neither declaration covers a non-transfer subtype.
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_FREE_REG, H));
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_COINBASE, H));
+    EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(0x02, H));  // reserved bridge subtype
+}
+
+TEST(PqDeliveryVersion, SenderHelperAgreesWithConsensusAtEveryBoundary) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    for (uint32_t H : {uint32_t(1), uint32_t(2), uint32_t(5000)}) {
+        const Currency currency = CurrencyBuilder(logger).pqDeliveryV2Height(H).currency();
+        for (uint32_t h : {H - 1, H, H + 1}) {
+            const uint8_t declared = pqTransferTypeForHeight(h, currency.pqDeliveryV2Height());
+            EXPECT_TRUE(currency.isPqTransferTypeAllowedAt(declared, h))
+                << "sender would declare " << int(declared) << " at height " << h
+                << ", which consensus refuses (activation " << H << ")";
+        }
+    }
+}
+
+TEST(PqDeliveryVersion, UnscheduledForkKeepsEveryHeightOnTheCurrentRules) {
+    Logging::ConsoleLogger logger(Logging::ERROR);
+    const Currency currency = CurrencyBuilder(logger).currency();  // shipped default
+    ASSERT_EQ(currency.pqDeliveryV2Height(), parameters::PQ_DELIVERY_V2_HEIGHT);
+    for (uint32_t h : {uint32_t(0), uint32_t(1), uint32_t(1000000), uint32_t(4000000000u)}) {
+        EXPECT_TRUE (currency.isPqTransferTypeAllowedAt(TX_PQ, h)) << h;
+        EXPECT_FALSE(currency.isPqTransferTypeAllowedAt(TX_PQ_V2, h)) << h;
+        EXPECT_EQ(pqTransferTypeForHeight(h, currency.pqDeliveryV2Height()), TX_PQ) << h;
+    }
+}
+
+// The shape rules are identical across the fork: only the declaration changes.
+// A post-fork transaction is still an ordinary transfer, and in particular it may
+// still SPEND pre-fork outputs — the rule constrains how outputs are created,
+// never what they reference, so no old coin is ever stranded.
+TEST(PqDeliveryVersion, DeclaredV2PassesTheSameShapeAndInputRules) {
+    BuiltTx b = buildSignedTx(1000000, 900000);
+    b.tx.txType = TX_PQ_V2;
+    std::string err;
+    EXPECT_TRUE(checkPqTransactionSemantic(b.tx, &err)) << err;
+    // Inputs still resolve and verify: the referenced outputs are pre-fork ones.
+    std::vector<Crypto::Hash> nfs;
+    // The signature was made over txType == TX_PQ, so flipping the byte after the
+    // fact must invalidate it — the declaration is inside the signing digest and
+    // cannot be relabelled in flight.
+    EXPECT_FALSE(checkPqTransactionInputs(b.tx, b.resolved, kMinFee, &nfs, &err));
+}
+
+TEST(PqDeliveryVersion, CorrectlySignedV2AcceptsResolvedHistoricalOwnership) {
+    BuiltTx b = buildSignedTx(1000000, 900000);
+    const auto historicalCommit = b.resolved[0].spendCommit;
+    b.tx.txType = TX_PQ_V2;
+    resign(b);
+    std::string err;
+    ASSERT_TRUE(checkPqTransactionSemantic(b.tx, &err)) << err;
+    std::vector<Crypto::Hash> nullifiers;
+    EXPECT_TRUE(checkPqTransactionInputs(
+        b.tx, b.resolved, kMinFee, &nullifiers, &err)) << err;
+    ASSERT_EQ(nullifiers.size(), 1u);
+    EXPECT_EQ(b.resolved[0].spendCommit, historicalCommit);
 }

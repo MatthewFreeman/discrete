@@ -309,7 +309,7 @@ bool Core::check_tx_fee(const Transaction& tx, const Crypto::Hash& txHash, size_
   const uint8_t blockMajorVersion = m_blockchain.getBlockMajorVersionForHeight(height);
   const bool isPqTx = tx.version >= TRANSACTION_VERSION_1;
   const bool isFreeRegTransaction = isPqTx && tx.txType == TX_FREE_REG;
-  if (isPqTx && tx.txType == TX_PQ) {
+  if (isPqTx && isPqTransfer(tx.txType)) {
     return true;
   }
 
@@ -365,7 +365,7 @@ bool Core::check_tx_semantic(const Transaction& tx, const Crypto::Hash& txHash, 
   // subtype (including the permanently-reserved 0x02) is rejected.
   if (tx.version >= TRANSACTION_VERSION_1) {
     std::string pqErr;
-    if (tx.txType == TX_PQ) {
+    if (isPqTransfer(tx.txType)) {
       if (!checkPqTransactionSemantic(tx, &pqErr)) {
         logger(ERROR) << "PQ tx semantic check failed (" << pqErr << ") for tx id= " << Common::podToHex(txHash);
         return false;
@@ -1269,7 +1269,7 @@ bool Core::handleIncomingTransaction(const Transaction& tx, const Crypto::Hash& 
     // Legacy fee/accounting reads classical KeyInput amounts and decoy-set sizes.
     // TX_PQ has neither; its fee floor (flat MINIMUM_FEE + tx_extra surcharge) and
     // the value balance are enforced in checkPqTransactionInputs.
-    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && tx.txType == TX_PQ;
+    const bool pqOnlyInputs = tx.version >= TRANSACTION_VERSION_1 && isPqTransfer(tx.txType);
     // The decomposed-amount rule is a classical-output rule; PQ outputs carry
     // arbitrary plain amounts.
     const bool hasPqOutputs = tx.version >= TRANSACTION_VERSION_1;

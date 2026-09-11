@@ -302,8 +302,11 @@ PqSendResult buildPqSend(const std::vector<PqSpendInput>& available,
   // One context for the whole transaction, derived once through the shared
   // consensus helper, so every input of this transaction signs under the same
   // transcript and under the same rule the verifier will apply.
-  const PqSigningContext signing =
-      pqSigningContextForHeight(req.signingHeight, req.genesisId);
+  const PqSigningContext signing = [&] {
+    PqSigningContext ctx = pqSigningContextForHeight(req.signingHeight, req.genesisId);
+    ctx.txType = pqTransferTypeForHeight(req.signingHeight, req.deliveryV2Height);
+    return ctx;
+  }();
   FittingBuild finalBuild = buildFitting(
       selected, inputAuth, req.recipients, change,
       changeTmpl, req.extra, signing);

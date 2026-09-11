@@ -85,13 +85,16 @@ std::optional<PqOwnedOutput> finishOwned(const DsaPublicKey& spendPub,
 // derivation at T=0. Callers that own issued SingleKeyIndex T values use
 // scanPqOutputLegacyTWindow after this O(1) path misses.
 std::optional<PqOwnedOutput> tryOwned(const KemShared& ss, const DsaPublicKey& spendPub,
-                                      const Hash256& inputsHash, const PqScanOutput& out) {
+                                      const Hash256& inputsHash, const PqScanOutput& out,
+                                      PqScanMode mode) {
   Hash256 ocV2 = outContext(inputsHash, out.kemCt, out.outputIndex);
   if (auto dp = tryDecrypt(ss, ocV2, out)) {
     if (auto owned = finishOwned(spendPub, out, *dp, ocV2)) {
       return owned;
     }
   }
+
+  if (mode != PqScanMode::Compatible) return std::nullopt;
 
   Hash256 ocLegacy = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, /*T=*/0);
   if (auto dp = tryDecrypt(ss, ocLegacy, out)) {
@@ -129,31 +132,34 @@ std::optional<PqOwnedOutput> scanPqOutputWithSharedSecret(
     const KemShared& sharedSecret,
     const DsaPublicKey& recipientSpendPub,
     const Hash256& inputsHash,
-    const PqScanOutput& out) {
-  return tryOwned(sharedSecret, recipientSpendPub, inputsHash, out);
+    const PqScanOutput& out, PqScanMode mode) {
+  return tryOwned(sharedSecret, recipientSpendPub, inputsHash, out, mode);
 }
 
 std::optional<PqOwnedOutput> scanPqOutput(const PqScanKeys& keys,
                                           const Hash256& inputsHash,
-                                          const PqScanOutput& out) {
+                                          const PqScanOutput& out,
+                                          PqScanMode mode) {
   // Recover the shared secret. FIPS 203 decaps never errors; on a non-owned
   // or malformed ciphertext it returns a pseudorandom secret, so the AEAD
   // tag inside tryOwned is the real ownership filter.
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
-  return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out);
+  return scanPqOutputWithSharedSecret(ss, keys.spendPub, inputsHash, out, mode);
 }
 
 std::optional<PqOwnedOutput> scanPqOutputWithLegacyTWindow(
     const PqScanKeys& keys, const Hash256& inputsHash,
-    const PqScanOutput& out, uint64_t maxT) {
+    const PqScanOutput& out, uint64_t maxT, PqScanMode mode) {
   // Decapsulate exactly once. The common current-format path returns before any
   // enumeration; tryOwned also covers the legacy T=0 compatibility case.
   KemShared ss = kem_decaps(keys.viewSk, out.kemCt);
   Tools::SecretLock sharedSecretLock(ss.data(), ss.size());
-  if (auto owned = tryOwned(ss, keys.spendPub, inputsHash, out)) {
+  if (auto owned = tryOwned(ss, keys.spendPub, inputsHash, out, mode)) {
     return owned;
   }
+
+  if (mode != PqScanMode::Compatible) return std::nullopt;
 
   // T=0 was already attempted by tryOwned, so the bounded compatibility scan
   // starts at 1 and never repeats either the KEM or the T=0 AEAD work.
@@ -171,10 +177,11 @@ std::optional<PqOwnedOutput> scanPqOutputLegacyTWindow(const PqScanKeys& keys,
 
 std::vector<PqOwnedOutput> scanPqOutputs(const PqScanKeys& keys,
                                          const Hash256& inputsHash,
-                                         const std::vector<PqScanOutput>& outputs) {
+                                         const std::vector<PqScanOutput>& outputs,
+                                         PqScanMode mode) {
   std::vector<PqOwnedOutput> owned;
   for (const auto& o : outputs) {
-    if (auto rec = scanPqOutput(keys, inputsHash, o)) {
+    if (auto rec = scanPqOutput(keys, inputsHash, o, mode)) {
       owned.push_back(*rec);
     }
   }
@@ -185,7 +192,7 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
     const KemSecretKey& viewSk,
     const std::vector<DsaPublicKey>& spendPubs,
     const Hash256& inputsHash,
-    const PqScanOutput& out) {
+    const PqScanOutput& out, PqScanMode mode) {
   // Spec 1 (aggregated-multikey): one shared ML-KEM view key decapsulates the
   // output; the DEPOSIT is distinguished by which deposit spend key the output
   // commits to (the spec's distinguisher), NOT by the subaddress index. A Spec-1
@@ -198,7 +205,7 @@ std::optional<PqAggregateOwned> scanPqOutputAggregate(
 
   Hash256 oc = outContext(inputsHash, out.kemCt, out.outputIndex);
   auto dp = tryDecrypt(ss, oc, out);
-  if (!dp) {
+  if (!dp && mode == PqScanMode::Compatible) {
     oc = legacyOutContextV1(inputsHash, out.kemCt, out.outputIndex, /*T=*/0);
     dp = tryDecrypt(ss, oc, out);
   }

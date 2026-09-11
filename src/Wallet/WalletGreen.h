@@ -171,11 +171,10 @@ public:
   // of all non-empty deposit balances by index (for walletd deposit attribution).
   uint64_t pqDepositBalance(uint32_t index) const;
   std::map<uint32_t, uint64_t> pqDepositBalances() const;
-  // MANUAL RECOVERY WINDOW EXTENSION (SingleKeyIndex only) — OFF by default
-  // and not persisted across process restarts. Normal scanning already covers
-  // every issued T. Set maxT above the issued cursor before reset() only when
-  // recovering a legacy output whose local address metadata was lost. The
-  // runtime value survives reset()'s internal shutdown/load cycle.
+  // MANUAL LEGACY RECOVERY (SingleKeyIndex only), off by default and not
+  // persisted across process restarts. Historical nonzero-T derivation requires
+  // an explicit exclusive maxT, even for issued addresses. Set it before rescan;
+  // it survives the internal shutdown/load cycle. Declared TX_PQ_V2 ignores it.
   void enableLegacyDepositRescan(uint32_t maxT);
 
   virtual void initialize(const std::string& path, const std::string& password) override;

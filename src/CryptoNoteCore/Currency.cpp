@@ -88,6 +88,12 @@ namespace CryptoNote {
       m_blockIndexesFileName = "testnet_" + m_blockIndexesFileName;
       m_blockchainIndicesFileName = "testnet_" + m_blockchainIndicesFileName;
       m_txPoolFileName = "testnet_" + m_txPoolFileName;
+      // Testnet activates the delivery declaration on its own schedule so the
+      // fork can be rehearsed before a mainnet height is chosen. Leave an
+      // explicitly configured height (tests, private nets) alone.
+      if (m_pqDeliveryV2Height == parameters::PQ_DELIVERY_V2_HEIGHT) {
+        m_pqDeliveryV2Height = parameters::PQ_DELIVERY_V2_HEIGHT_TESTNET;
+      }
     }
 
     return true;
@@ -501,6 +507,7 @@ namespace CryptoNote {
     freeRegPowTarget(parameters::FREE_REG_POW_TARGET);
     freeRegPoolLimit(parameters::FREE_REG_POOL_LIMIT);
 
+    pqDeliveryV2Height(parameters::PQ_DELIVERY_V2_HEIGHT);
     testnet(false);
   }
 
