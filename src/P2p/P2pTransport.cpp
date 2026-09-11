@@ -291,7 +291,7 @@ struct P2pTransport::Impl : std::enable_shared_from_this<P2pTransport::Impl> {
       : timer(owner->dispatcher.getIoContext(), std::chrono::milliseconds(P2pTransportContext::HANDSHAKE_TIMEOUT_MS)) {
       timer.async_wait([owner](const boost::system::error_code& ec) { if (!ec) owner->close(); });
     }
-    ~Deadline() { boost::system::error_code ignored; timer.cancel(ignored); }
+    ~Deadline() = default; // The timer destructor cancels outstanding waits.
   };
 };
 
