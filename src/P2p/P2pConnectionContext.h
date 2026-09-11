@@ -8,6 +8,7 @@
 #include "Logging/LoggerRef.h"
 #include "System/TcpConnection.h"
 #include "P2pProtocolTypes.h"
+#include "P2pTransport.h"
 
 namespace CryptoNote {
 
@@ -42,14 +43,18 @@ namespace CryptoNote {
 
     System::Context<void>* context = nullptr;
     PeerIdType peerId = 0;
-    System::TcpConnection connection;
+    P2pTransport connection;
+    bool transportAdmission = false;
     std::set<NetworkAddress> sent_addresses;
 
     P2pConnectionContext(System::Dispatcher& dispatcher, Logging::ILogger& log, System::TcpConnection&& conn) :
-      connection(std::move(conn)),
+      connection(dispatcher, std::move(conn)),
       logger(log, "node_server"),
       queueEvent(dispatcher) {
     }
+
+    P2pConnectionContext(System::Dispatcher& dispatcher, Logging::ILogger& log, P2pTransport&& conn) :
+      connection(std::move(conn)), logger(log, "node_server"), queueEvent(dispatcher) {}
 
     bool pushMessage(P2pMessage&& msg);
     std::vector<P2pMessage> popBuffer();

@@ -20,6 +20,7 @@ public:
     TcpListener& operator=(TcpListener&& other) noexcept;
 
     TcpConnection accept();
+    uint16_t getLocalPort() const;
     void close();
 
 private:

@@ -26,6 +26,11 @@ namespace System {
 
   TcpListener::~TcpListener() = default;
 
+  uint16_t TcpListener::getLocalPort() const {
+    if (!acceptor) throw std::runtime_error("Listener not initialized");
+    return acceptor->local_endpoint().port();
+  }
+
   TcpListener& TcpListener::operator=(TcpListener&& other) noexcept {
     if (this != &other) {
       dispatcher = other.dispatcher;

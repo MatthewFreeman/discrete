@@ -1,0 +1,86 @@
+name: PQ P2P transport
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'utils/P2pTransportKeygen.cpp'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'external/**'
+      - '.github/workflows/p2p-transport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libboost-all-dev libssl-dev pkg-config perl curl iproute2 util-linux
+      - name: Build the qualified OpenSSL version
+        run: |
+          mkdir -p "$RUNNER_TEMP/pq-openssl"
+          cd "$RUNNER_TEMP/pq-openssl"
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz -o source.tar.gz
+          echo 'a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2  source.tar.gz' | sha256sum --check
+          tar -xzf source.tar.gz
+          cd openssl-3.5.8
+          ./Configure --prefix="$RUNNER_TEMP/pq-openssl/install" --libdir=lib no-shared
+          make -j2
+          make install_sw
+      - name: Build candidate and unchanged baseline with matching dependencies
+        run: |
+          ssl="$RUNNER_TEMP/pq-openssl/install"
+          options=(-G Ninja -DBUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCOMMIT_ID_IN_VERSION=OFF
+            -DDISCRETE_BOOST_PREFER_MODULE=ON -DDISCRETE_ENABLE_PQ_P2P=ON
+            "-DOPENSSL_INCLUDE_DIR=$ssl/include" "-DOPENSSL_SSL_LIBRARY=$ssl/lib/libssl.a"
+            "-DOPENSSL_CRYPTO_LIBRARY=$ssl/lib/libcrypto.a")
+          cmake -S . -B build/pq "${options[@]}"
+          cmake --build build/pq --target Daemon P2pTransportKeygen P2pTransportTests P2pTransportNodeTests P2pTransportBench PqChainTests PqWalletTests -j2
+          mkdir -p "$RUNNER_TEMP/pq-baseline"
+          git archive 9fd5415ca5332b512b02dd091fc8d448c5c8b6b5 | tar -xf - -C "$RUNNER_TEMP/pq-baseline"
+          cp tests/test_p2p_transport_nodes.cpp "$RUNNER_TEMP/pq-baseline/tests/"
+          cat >> "$RUNNER_TEMP/pq-baseline/tests/CMakeLists.txt" <<'CMAKE'
+
+          add_executable(P2pTransportNodeTests test_p2p_transport_nodes.cpp)
+          target_compile_definitions(P2pTransportNodeTests PRIVATE P2P_TRANSPORT_BASELINE=1)
+          target_link_libraries(P2pTransportNodeTests TestGenerator P2P CryptoNoteProtocol Wallet CryptoNoteCore BlockchainExplorer System Logging Serialization Common Crypto upnpc-static ${Boost_LIBRARIES} ${OPENSSL_LIBRARIES})
+          CMAKE
+          cmake -S "$RUNNER_TEMP/pq-baseline" -B build/pq-baseline "${options[@]}"
+          cmake --build build/pq-baseline --target P2pTransportNodeTests -j2
+      - name: Native transport and adjacent PQ regressions
+        run: |
+          mkdir -p transport-results
+          sudo bash tests/p2p_transport/run-isolated.sh timeout 90 \
+            build/pq/tests/P2pTransportTests --gtest_output=xml:transport-results/native.xml
+          ctest --test-dir build/pq -R '^(PqChainTests|PqWalletTests)$' --output-on-failure --timeout 120
+      - name: Real mixed-version processes, discovery and reconnect
+        run: |
+          sudo bash tests/p2p_transport/run-functional-matrix.sh \
+            build/pq/tests/P2pTransportNodeTests build/pq-baseline/tests/P2pTransportNodeTests \
+            "$PWD/transport-results/processes"
+          sudo bash tests/p2p_transport/run-isolated.sh timeout 60 \
+            build/pq/tests/P2pTransportBench pq 2048 | tee transport-results/key-update.json
+      - name: Preserve qualification output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2p-transport-linux
+          path: |
+            transport-results/**/*.log
+            transport-results/**/*.xml
+            transport-results/**/*.json
+            transport-results/**/*.sha256
+            build/pq/Testing/Temporary/LastTest.log
