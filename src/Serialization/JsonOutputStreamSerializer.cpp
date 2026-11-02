@@ -73,8 +73,9 @@ void JsonOutputStreamSerializer::endObject() {
 }
 
 bool JsonOutputStreamSerializer::beginArray(size_t& size, Common::StringView name) {
+  JsonValue& parent = *chain.back();
   JsonValue val(JsonValue::ARRAY);
-  JsonValue& res = chain.back()->insert(std::string(name), val);
+  JsonValue& res = parent.isArray() ? parent.pushBack(val) : parent.insert(std::string(name), val);
   chain.push_back(&res);
   return true;
 }
